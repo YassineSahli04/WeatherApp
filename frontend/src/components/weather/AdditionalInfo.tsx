@@ -11,6 +11,56 @@ interface AdditionalInfoProps {
   alerts: { type: string; message: string }[];
 }
 
+interface ParsedAlertSections {
+  WHAT?: string;
+  WHERE?: string;
+  WHEN?: string;
+  IMPACTS?: string;
+  "ADDITIONAL DETAILS"?: string;
+}
+
+function cleanAlertText(value: string): string {
+  return value.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+}
+
+function parseAlertSections(message: string): ParsedAlertSections | null {
+  const normalized = message.replace(/\r/g, "").trim();
+  if (!normalized.includes("*")) {
+    return null;
+  }
+
+  const markerRegex = /\*\s*([A-Z][A-Z ]+)\.\.\.\s*/g;
+  const markers = Array.from(normalized.matchAll(markerRegex));
+  if (!markers.length) {
+    return null;
+  }
+
+  const sections: ParsedAlertSections = {};
+
+  for (let i = 0; i < markers.length; i += 1) {
+    const match = markers[i];
+    const nextMatch = markers[i + 1];
+    const key = match[1].trim() as keyof ParsedAlertSections;
+    const start = (match.index || 0) + match[0].length;
+    const end = nextMatch?.index ?? normalized.length;
+    const value = cleanAlertText(normalized.slice(start, end));
+
+    if (value) {
+      sections[key] = value;
+    }
+  }
+
+  return Object.keys(sections).length ? sections : null;
+}
+
+function toImpactItems(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 const AdditionalInfo: React.FC<AdditionalInfoProps> = ({
   sunrise, sunset, feelsLike, temp, windSpeed, humidity, alerts,
 }) => {
@@ -79,7 +129,66 @@ const AdditionalInfo: React.FC<AdditionalInfoProps> = ({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">{alert.type}</p>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{alert.message}</p>
+                  {(() => {
+                    const parsed = parseAlertSections(alert.message);
+                    if (!parsed) {
+                      return (
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">
+                          {alert.message}
+                        </p>
+                      );
+                    }
+
+                    const impactItems = parsed.IMPACTS ? toImpactItems(parsed.IMPACTS) : [];
+
+                    return (
+                      <div className="mt-1.5 space-y-2">
+                        {parsed.WHAT && (
+                          <p className="text-xs text-foreground/90 leading-relaxed">
+                            <span className="font-semibold">What: </span>
+                            {parsed.WHAT}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {parsed.WHERE && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-secondary/60 text-secondary-foreground">
+                              <span className="font-semibold">Where:</span> {parsed.WHERE}
+                            </span>
+                          )}
+                          {parsed.WHEN && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-secondary/60 text-secondary-foreground">
+                              <span className="font-semibold">When:</span> {parsed.WHEN}
+                            </span>
+                          )}
+                        </div>
+
+                        {impactItems.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-foreground mb-1">Impacts</p>
+                            <ul className="space-y-1">
+                              {impactItems.map((item) => (
+                                <li key={item} className="text-xs text-muted-foreground leading-relaxed">
+                                  - {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {parsed["ADDITIONAL DETAILS"] && (
+                          <details className="group">
+                            <summary className="text-[11px] font-semibold text-foreground cursor-pointer">
+                              Additional details
+                            </summary>
+                            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                              {parsed["ADDITIONAL DETAILS"]}
+                            </p>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
