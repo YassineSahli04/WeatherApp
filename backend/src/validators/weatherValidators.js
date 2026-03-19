@@ -158,7 +158,7 @@ function validateApiEndpoint(rawEndpoint) {
     rawEndpoint === null ||
     String(rawEndpoint).trim() === ""
   ) {
-    throw new AppError("`endpoint` must be defined.", 400, "VALIDATION_ERROR");
+    return "forecast";
   }
 
   if (typeof rawEndpoint !== "string") {
@@ -172,7 +172,7 @@ function validateApiEndpoint(rawEndpoint) {
 
   if (!ALLOWED_API_ENDPOINTS.has(endpoint)) {
     throw new AppError(
-      "`endpoint` is invalid. Allowed values: current, forecast, history, future, astronomy, search, timezone, sports, ip, marine.",
+      "`endpoint` is invalid. Allowed values: current, forecast, alerts.",
       400,
       "VALIDATION_ERROR",
     );

@@ -6,21 +6,22 @@ import KeyMetrics from "@/components/weather/KeyMetrics";
 import HourlyForecast from "@/components/weather/HourlyForecast";
 import AdditionalInfo from "@/components/weather/AdditionalInfo";
 import MapSection from "@/components/weather/MapSection";
-import { MOCK_WEATHER } from "@/data/weatherData";
+import { MOCK_LOCATION } from "@/data/weatherData";
 import { fetchWeatherForLocation } from "@/services/weatherApi";
 
 const Index = () => {
-  const [location, setLocation] = useState(MOCK_WEATHER.location);
+  const [location, setLocation] = useState(MOCK_LOCATION);
+  const weatherType = "forecast";
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ["weather", location],
-    queryFn: () => fetchWeatherForLocation(location),
+    queryKey: ["weather", location, weatherType],
+    queryFn: () => fetchWeatherForLocation(location, weatherType),
     enabled: location.trim().length > 0,
     retry: 1,
     staleTime: 60 * 1000,
     placeholderData: (previousData) => previousData,
   });
 
-  const weatherData = data || MOCK_WEATHER;
+  const weatherData = data;
   const requestError = error instanceof Error ? error.message : null;
 
   return (
@@ -29,7 +30,9 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-5 max-w-4xl">
         {(isLoading || isFetching) && (
-          <p className="text-xs text-muted-foreground">Updating weather data...</p>
+          <p className="text-xs text-muted-foreground">
+            Updating weather data...
+          </p>
         )}
         {requestError && (
           <p className="text-xs text-destructive">{requestError}</p>
@@ -48,7 +51,9 @@ const Index = () => {
 
         {/* Key Metrics */}
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">Conditions</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">
+            Conditions
+          </h2>
           <KeyMetrics
             high={weatherData.current.high}
             low={weatherData.current.low}
@@ -69,7 +74,9 @@ const Index = () => {
 
         {/* Additional Info */}
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">Details</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">
+            Details
+          </h2>
           <AdditionalInfo
             sunrise={weatherData.sunrise}
             sunset={weatherData.sunset}
