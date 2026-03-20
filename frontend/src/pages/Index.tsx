@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import SearchHeader from "@/components/weather/SearchHeader";
 import WeatherHero from "@/components/weather/WeatherHero";
@@ -6,7 +6,7 @@ import KeyMetrics from "@/components/weather/KeyMetrics";
 import HourlyForecast from "@/components/weather/HourlyForecast";
 import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
-import { MOCK_LOCATION } from "@/data/weatherData";
+import { MOCK_LOCATION, MOCK_LOCATION_LABEL } from "@/data/weatherData";
 import { fetchWeatherForLocation } from "@/services/weatherApi";
 
 const LoadingPlaceholder = () => (
@@ -66,12 +66,13 @@ const LoadingPlaceholder = () => (
 );
 
 const Index = () => {
-  const [location, setLocation] = useState(MOCK_LOCATION);
+  const [queryLocation, setQueryLocation] = useState(MOCK_LOCATION);
+  const [displayLocation, setDisplayLocation] = useState(MOCK_LOCATION_LABEL);
   const weatherType = "forecast";
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ["weather", location, weatherType],
-    queryFn: () => fetchWeatherForLocation(location, weatherType),
-    enabled: location.trim().length > 0,
+    queryKey: ["weather", queryLocation, weatherType],
+    queryFn: () => fetchWeatherForLocation(queryLocation, weatherType),
+    enabled: queryLocation.trim().length > 0,
     retry: 1,
     staleTime: 60 * 1000,
   });
@@ -80,9 +81,21 @@ const Index = () => {
   const requestError = error instanceof Error ? error.message : null;
   const isAwaitingResponse = isLoading || isFetching;
 
+  useEffect(() => {
+    if (weatherData?.location) {
+      setDisplayLocation(weatherData.location);
+    }
+  }, [weatherData?.location]);
+
   return (
     <div className="min-h-screen bg-background">
-      <SearchHeader location={location} onLocationChange={setLocation} />
+      <SearchHeader
+        displayLocation={displayLocation}
+        onLocationChange={({ queryLocation: nextQueryLocation, displayLocation: nextDisplayLocation }) => {
+          setQueryLocation(nextQueryLocation);
+          setDisplayLocation(nextDisplayLocation);
+        }}
+      />
 
       {isAwaitingResponse && <LoadingPlaceholder />}
 
@@ -143,7 +156,7 @@ const Index = () => {
           {/* Map */}
           <section>
             <MapSection
-              location={location}
+              location={displayLocation}
               lat={weatherData.coordinates.lat}
               lng={weatherData.coordinates.lng}
             />

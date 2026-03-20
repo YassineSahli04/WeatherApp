@@ -42,15 +42,5 @@ export interface WeatherDashboardData {
   alert: WeatherAlertItem;
 }
 
-export const MOCK_LOCATION = "San Francisco, CA";
-
-export const LOCATION_SUGGESTIONS = [
-  "San Francisco, CA",
-  "New York, NY",
-  "London, UK",
-  "Tokyo, Japan",
-  "Paris, France",
-  "Sydney, Australia",
-  "Berlin, Germany",
-  "Dubai, UAE",
-];
+export const MOCK_LOCATION = "37.77,-122.42";
+export const MOCK_LOCATION_LABEL = "San Francisco";

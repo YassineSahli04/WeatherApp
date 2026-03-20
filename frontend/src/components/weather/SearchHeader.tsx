@@ -1,116 +1,613 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Search, MapPin, Navigation, X } from "lucide-react";
-import { LOCATION_SUGGESTIONS } from "@/data/weatherData";
 
 interface SearchHeaderProps {
-  location: string;
-  onLocationChange: (location: string) => void;
+  displayLocation: string;
+  onLocationChange: (selection: {
+    queryLocation: string;
+    displayLocation: string;
+  }) => void;
 }
 
-const SearchHeader: React.FC<SearchHeaderProps> = ({ location, onLocationChange }) => {
+interface MapboxContext {
+  id?: string;
+  text?: string;
+  short_code?: string;
+}
+
+interface RawMapboxFeature {
+  id?: string;
+  text?: string;
+  place_name?: string;
+  center?: [number, number];
+  place_type?: string[];
+  context?: MapboxContext[];
+}
+
+interface GeocodeSuggestion {
+  id: string;
+  displayName: string;
+  label: string;
+  context?: string;
+  lat: number;
+  lng: number;
+}
+
+const MAPBOX_TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN || "").trim();
+
+function isValidToken(token: string): boolean {
+  return Boolean(token && token !== "your_mapbox_token_here");
+}
+
+function toCoordinateLocation(lat: number, lng: number): string {
+  return `${lat},${lng}`;
+}
+
+function parseCoordinateQuery(
+  value: string,
+): { lat: number; lng: number } | null {
+  const match = value.match(
+    /^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/,
+  );
+  if (!match) {
+    return null;
+  }
+
+  const lat = Number.parseFloat(match[1]);
+  const lng = Number.parseFloat(match[2]);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
+function getFeatureCenter(
+  feature: RawMapboxFeature,
+): { lat: number; lng: number } | null {
+  const center = feature.center || [NaN, NaN];
+  const lng = Number(center[0]);
+  const lat = Number(center[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+  return { lat, lng };
+}
+
+function getContextValue(
+  feature: RawMapboxFeature,
+  prefixes: string[],
+): string | null {
+  const context = feature.context || [];
+  for (const item of context) {
+    const id = item.id || "";
+    if (prefixes.some((prefix) => id.startsWith(prefix))) {
+      const value = (item.text || "").trim();
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function getCityName(feature: RawMapboxFeature): string | null {
+  const placeTypes = feature.place_type || [];
+  if (placeTypes.includes("place")) {
+    return (feature.text || "").trim() || null;
+  }
+
+  return (
+    getContextValue(feature, ["place."]) ||
+    getContextValue(feature, ["locality."]) ||
+    getContextValue(feature, ["district."]) ||
+    null
+  );
+}
+
+function getCountryCode(feature: RawMapboxFeature): string | null {
+  const context = feature.context || [];
+  const country = context.find((item) => (item.id || "").startsWith("country."));
+  const code = (country?.short_code || "").trim().toLowerCase();
+  return code || null;
+}
+
+async function fetchMapboxFeatures(
+  query: string,
+  options?: {
+    signal?: AbortSignal;
+    limit?: number;
+    types?: string;
+    autocomplete?: boolean;
+    proximity?: { lat: number; lng: number } | null;
+    countryCode?: string | null;
+  },
+): Promise<RawMapboxFeature[]> {
+  const url = new URL(
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json`,
+  );
+  url.searchParams.set(
+    "types",
+    options?.types || "address,postcode,place,locality,neighborhood",
+  );
+  url.searchParams.set("limit", String(options?.limit || 8));
+  url.searchParams.set(
+    "autocomplete",
+    options?.autocomplete === false ? "false" : "true",
+  );
+  url.searchParams.set("access_token", MAPBOX_TOKEN);
+
+  if (options?.proximity) {
+    url.searchParams.set(
+      "proximity",
+      `${options.proximity.lng},${options.proximity.lat}`,
+    );
+  }
+
+  if (options?.countryCode) {
+    url.searchParams.set("country", options.countryCode);
+  }
+
+  const response = await fetch(url.toString(), { signal: options?.signal });
+  if (!response.ok) {
+    throw new Error("Unable to search locations right now.");
+  }
+
+  const payload = (await response.json()) as {
+    features?: RawMapboxFeature[];
+  };
+  return payload.features || [];
+}
+
+function mapPlaceFeatureToCitySuggestion(
+  feature: RawMapboxFeature,
+): GeocodeSuggestion | null {
+  const placeTypes = feature.place_type || [];
+  if (!placeTypes.includes("place")) {
+    return null;
+  }
+
+  const center = getFeatureCenter(feature);
+  if (!center) {
+    return null;
+  }
+
+  const displayName =
+    getCityName(feature) || feature.text || feature.place_name || "Unknown city";
+  const fullPlace = (feature.place_name || "").trim();
+  const context = fullPlace.startsWith(`${displayName},`)
+    ? fullPlace.slice(displayName.length + 1).trim()
+    : "";
+
+  return {
+    id: feature.id || `${center.lat},${center.lng}`,
+    displayName,
+    label: fullPlace || displayName,
+    context: context || undefined,
+    lat: center.lat,
+    lng: center.lng,
+  };
+}
+
+async function fetchCityByName(
+  cityName: string,
+  options?: {
+    signal?: AbortSignal;
+    proximity?: { lat: number; lng: number } | null;
+    countryCode?: string | null;
+  },
+): Promise<GeocodeSuggestion | null> {
+  const features = await fetchMapboxFeatures(cityName, {
+    signal: options?.signal,
+    limit: 1,
+    types: "place",
+    autocomplete: false,
+    proximity: options?.proximity || null,
+    countryCode: options?.countryCode || null,
+  });
+
+  const cityFeature = features[0];
+  if (!cityFeature) {
+    return null;
+  }
+  return mapPlaceFeatureToCitySuggestion(cityFeature);
+}
+
+async function fetchCitySuggestionsFromAnyInput(
+  query: string,
+  limit: number,
+  options?: {
+    signal?: AbortSignal;
+    autocomplete?: boolean;
+  },
+): Promise<GeocodeSuggestion[]> {
+  const features = await fetchMapboxFeatures(query, {
+    signal: options?.signal,
+    limit: Math.max(limit * 3, 8),
+    types: "address,postcode,place,locality,neighborhood",
+    autocomplete: options?.autocomplete,
+  });
+
+  const directCitySuggestions: GeocodeSuggestion[] = [];
+  const citySeeds = new Map<
+    string,
+    { cityName: string; proximity: { lat: number; lng: number } | null; countryCode: string | null }
+  >();
+
+  for (const feature of features) {
+    const directCity = mapPlaceFeatureToCitySuggestion(feature);
+    if (directCity) {
+      directCitySuggestions.push(directCity);
+      continue;
+    }
+
+    const cityName = getCityName(feature);
+    if (!cityName) {
+      continue;
+    }
+
+    const countryCode = getCountryCode(feature);
+    const proximity = getFeatureCenter(feature);
+    const key = `${cityName.toLowerCase()}|${countryCode || ""}`;
+    if (!citySeeds.has(key)) {
+      citySeeds.set(key, { cityName, proximity, countryCode });
+    }
+  }
+
+  const resolvedCities = await Promise.all(
+    Array.from(citySeeds.values()).map((seed) =>
+      fetchCityByName(seed.cityName, {
+        signal: options?.signal,
+        proximity: seed.proximity,
+        countryCode: seed.countryCode,
+      }),
+    ),
+  );
+
+  const combined = [...directCitySuggestions, ...resolvedCities.filter(Boolean)];
+  const deduped = new Map<string, GeocodeSuggestion>();
+  for (const city of combined) {
+    const key = city.label.toLowerCase();
+    if (!deduped.has(key)) {
+      deduped.set(key, city);
+    }
+  }
+
+  return Array.from(deduped.values()).slice(0, limit);
+}
+
+async function reverseGeocodeNearestCity(
+  lat: number,
+  lng: number,
+): Promise<GeocodeSuggestion | null> {
+  const cities = await fetchCitySuggestionsFromAnyInput(`${lng},${lat}`, 1, {
+    autocomplete: false,
+  });
+  return cities[0] || null;
+}
+
+function getCurrentPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 300000,
+    });
+  });
+}
+
+const SearchHeader: React.FC<SearchHeaderProps> = ({
+  displayLocation,
+  onLocationChange,
+}) => {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState("");
   const [showCoords, setShowCoords] = useState(false);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filtered = query.length > 0
-    ? LOCATION_SUGGESTIONS.filter(s => s.toLowerCase().includes(query.toLowerCase()))
-    : [];
-
-  const handleSearch = () => {
-    if (!query.trim()) {
-      setError("Please enter a location");
-      return;
-    }
-    setError("");
-    onLocationChange(query.trim());
+  const applySuggestion = (selection: GeocodeSuggestion) => {
+    onLocationChange({
+      queryLocation: toCoordinateLocation(selection.lat, selection.lng),
+      displayLocation: selection.displayName,
+    });
     setQuery("");
     setFocused(false);
-  };
-
-  const handleSuggestionClick = (suggestion: string) => {
-    onLocationChange(suggestion);
-    setQuery("");
-    setFocused(false);
+    setSuggestions([]);
     setError("");
   };
 
-  const handleGPS = () => {
-    onLocationChange("Current Location");
-    setError("");
+  const handleSuggestionClick = (suggestion: GeocodeSuggestion) => {
+    applySuggestion(suggestion);
   };
 
-  const handleCoordsSubmit = () => {
-    const latNum = parseFloat(lat);
-    const lngNum = parseFloat(lng);
-    if (isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
-      setError("Invalid coordinates. Lat: -90 to 90, Lng: -180 to 180");
+  const handleSearch = async () => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setError("Please enter an address, zip, or city.");
       return;
     }
+
+    if (!isValidToken(MAPBOX_TOKEN)) {
+      setError("Mapbox token missing. Set VITE_MAPBOX_TOKEN to search locations.");
+      return;
+    }
+
+    setIsSubmitting(true);
     setError("");
-    onLocationChange(`${latNum.toFixed(4)}, ${lngNum.toFixed(4)}`);
-    setShowCoords(false);
-    setLat("");
-    setLng("");
+    try {
+      const coordinateQuery = parseCoordinateQuery(trimmed);
+      if (coordinateQuery) {
+        const coordinateCity = await reverseGeocodeNearestCity(
+          coordinateQuery.lat,
+          coordinateQuery.lng,
+        );
+        if (!coordinateCity) {
+          setError("No city found for these coordinates.");
+          return;
+        }
+        applySuggestion(coordinateCity);
+        return;
+      }
+
+      const best =
+        suggestions[0] || (await fetchCitySuggestionsFromAnyInput(trimmed, 1))[0];
+      if (!best) {
+        setError("No city found for this search. Try another query.");
+        return;
+      }
+
+      applySuggestion(best);
+    } catch (searchError) {
+      const message =
+        searchError instanceof Error
+          ? searchError.message
+          : "Unable to search locations right now.";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGPS = async () => {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not available in this browser.");
+      return;
+    }
+
+    if (!isValidToken(MAPBOX_TOKEN)) {
+      setError("Mapbox token missing. Set VITE_MAPBOX_TOKEN to use GPS.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const position = await getCurrentPosition();
+      const city = await reverseGeocodeNearestCity(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+
+      if (!city) {
+        setError("Unable to resolve your location to a city.");
+        return;
+      }
+
+      applySuggestion(city);
+    } catch {
+      setError("Unable to get your current location.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCoordsSubmit = async () => {
+    const latNum = Number.parseFloat(lat);
+    const lngNum = Number.parseFloat(lng);
+
+    if (
+      Number.isNaN(latNum) ||
+      Number.isNaN(lngNum) ||
+      latNum < -90 ||
+      latNum > 90 ||
+      lngNum < -180 ||
+      lngNum > 180
+    ) {
+      setError("Invalid coordinates. Latitude: -90..90, Longitude: -180..180.");
+      return;
+    }
+
+    if (!isValidToken(MAPBOX_TOKEN)) {
+      setError("Mapbox token missing. Set VITE_MAPBOX_TOKEN to use coordinates.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const city = await reverseGeocodeNearestCity(latNum, lngNum);
+      if (!city) {
+        setError("Unable to resolve these coordinates to a city.");
+        return;
+      }
+
+      applySuggestion(city);
+      setShowCoords(false);
+      setLat("");
+      setLng("");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.closest('.search-container')?.contains(e.target as Node)) {
+      if (
+        inputRef.current &&
+        !inputRef.current
+          .closest(".search-container")
+          ?.contains(e.target as Node)
+      ) {
         setFocused(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const trimmed = query.trim();
+
+    if (!focused || trimmed.length < 2) {
+      setSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
+    if (!isValidToken(MAPBOX_TOKEN)) {
+      setSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const next = await fetchCitySuggestionsFromAnyInput(trimmed, 5, {
+          signal: controller.signal,
+        });
+        setSuggestions(next);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [query, focused]);
+
   return (
-    <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50">
-      <div className="container mx-auto py-3 px-4">
-        <div className="flex items-center gap-2 mb-1">
-          <MapPin className="w-4 h-4 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground truncate">{location}</h1>
+    <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <div className="container mx-auto px-4 py-3">
+        <div className="mb-1 flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-primary" />
+          <h1 className="truncate text-sm font-semibold text-foreground">
+            {displayLocation}
+          </h1>
         </div>
 
         <div className="search-container relative flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               ref={inputRef}
               type="text"
               value={query}
-              onChange={e => { setQuery(e.target.value); setError(""); }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setError("");
+              }}
               onFocus={() => setFocused(true)}
-              onKeyDown={e => e.key === "Enter" && handleSearch()}
-              placeholder="Search city, zip code, or landmark..."
-              className="w-full h-10 pl-10 pr-10 bg-secondary/60 border border-border/50 rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  void handleSearch();
+                }
+              }}
+              placeholder="Search address, zip, city, or coordinates..."
+              className="h-10 w-full rounded-xl border border-border/50 bg-secondary/60 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+              disabled={isSubmitting}
             />
+
             {query && (
-              <button onClick={() => { setQuery(""); setError(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                <X className="w-4 h-4" />
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setSuggestions([]);
+                  setError("");
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Clear query"
+              >
+                <X className="h-4 w-4" />
               </button>
             )}
 
-            {focused && filtered.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg overflow-hidden z-40 animate-fade-in">
-                {filtered.map(s => (
-                  <button key={s} onClick={() => handleSuggestionClick(s)} className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-secondary/60 transition-colors flex items-center gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                    {s}
-                  </button>
-                ))}
+            {focused && (query.trim().length >= 2 || isSearching) && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg animate-fade-in">
+                {isSearching && (
+                  <div className="px-4 py-2.5 text-sm text-muted-foreground">
+                    Searching...
+                  </div>
+                )}
+
+                {!isSearching &&
+                  suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.id}
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      className="flex w-full items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-secondary/60"
+                    >
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm text-foreground">
+                          {suggestion.displayName}
+                        </span>
+                        {suggestion.context && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {suggestion.context}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+
+                {!isSearching && suggestions.length === 0 && (
+                  <div className="px-4 py-2.5 text-sm text-muted-foreground">
+                    No cities found for this input.
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          <button onClick={handleGPS} title="Use current location" className="h-10 w-10 flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0">
-            <Navigation className="w-4 h-4" />
+          <button
+            onClick={() => void handleGPS()}
+            title="Use current location"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            disabled={isSubmitting}
+          >
+            <Navigation className="h-4 w-4" />
           </button>
 
-          <button onClick={() => setShowCoords(!showCoords)} title="Enter coordinates" className="h-10 w-10 flex items-center justify-center rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors shrink-0 text-xs font-bold">
+          <button
+            onClick={() => setShowCoords(!showCoords)}
+            title="Enter coordinates"
+            className="h-10 w-10 shrink-0 rounded-xl bg-secondary text-xs font-bold text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+            disabled={isSubmitting}
+          >
             GPS
           </button>
         </div>
@@ -120,25 +617,30 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({ location, onLocationChange 
             <input
               type="number"
               value={lat}
-              onChange={e => setLat(e.target.value)}
+              onChange={(e) => setLat(e.target.value)}
               placeholder="Latitude"
-              className="flex-1 h-9 px-3 bg-secondary/60 border border-border/50 rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="h-9 flex-1 rounded-lg border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <input
               type="number"
               value={lng}
-              onChange={e => setLng(e.target.value)}
+              onChange={(e) => setLng(e.target.value)}
               placeholder="Longitude"
-              className="flex-1 h-9 px-3 bg-secondary/60 border border-border/50 rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="h-9 flex-1 rounded-lg border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
-            <button onClick={handleCoordsSubmit} className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+            <button
+              onClick={() => void handleCoordsSubmit()}
+              className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
               Go
             </button>
           </div>
         )}
 
         {error && (
-          <p className="mt-1.5 text-xs text-destructive animate-fade-in">{error}</p>
+          <p className="mt-1.5 text-xs text-destructive animate-fade-in">
+            {error}
+          </p>
         )}
       </div>
     </header>
