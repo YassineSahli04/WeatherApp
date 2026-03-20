@@ -68,10 +68,9 @@ const LoadingPlaceholder = () => (
 const Index = () => {
   const [queryLocation, setQueryLocation] = useState(MOCK_LOCATION);
   const [displayLocation, setDisplayLocation] = useState(MOCK_LOCATION_LABEL);
-  const weatherType = "forecast";
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ["weather", queryLocation, weatherType],
-    queryFn: () => fetchWeatherForLocation(queryLocation, weatherType),
+    queryKey: ["weather", queryLocation],
+    queryFn: () => fetchWeatherForLocation(queryLocation),
     enabled: queryLocation.trim().length > 0,
     retry: 1,
     staleTime: 60 * 1000,

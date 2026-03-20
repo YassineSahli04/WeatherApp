@@ -57,8 +57,6 @@ interface BackendErrorResponse {
   };
 }
 
-export type WeatherApiType = "current" | "forecast" | "alerts";
-
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 
 function getApiBaseUrl(): string {
@@ -234,11 +232,10 @@ function toDashboardData(
 
 export async function fetchWeatherForLocation(
   location: string,
-  type: WeatherApiType,
 ): Promise<WeatherDashboardData> {
   const apiBaseUrl = getApiBaseUrl();
   const response = await fetch(
-    `${apiBaseUrl}/weather?location=${encodeURIComponent(location)}&type=${encodeURIComponent(type)}`,
+    `${apiBaseUrl}/weather?location=${encodeURIComponent(location)}`,
   );
   if (!response.ok) {
     const errorPayload = (await response

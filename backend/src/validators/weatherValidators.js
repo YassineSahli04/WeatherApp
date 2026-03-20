@@ -8,8 +8,6 @@ const CANADA_POSTAL_REGEX =
 const CANADA_POSTAL_FSA_REGEX = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTVWXYZ]$/i;
 const CITY_NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ .,'-]{1,119}$/;
 
-const ALLOWED_API_ENDPOINTS = new Set(["current", "forecast", "alerts"]);
-
 function normalizeCoordinateLocation(location) {
   const coordinateMatch = location.match(
     /^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/,
@@ -152,38 +150,8 @@ function validateRecordId(rawId) {
   return id;
 }
 
-function validateApiEndpoint(rawEndpoint) {
-  if (
-    rawEndpoint === undefined ||
-    rawEndpoint === null ||
-    String(rawEndpoint).trim() === ""
-  ) {
-    throw new AppError("`endpoint` must be defined.", 400, "VALIDATION_ERROR");
-  }
-
-  if (typeof rawEndpoint !== "string") {
-    throw new AppError("`endpoint` must be a string.", 400, "VALIDATION_ERROR");
-  }
-
-  const endpoint = rawEndpoint
-    .trim()
-    .toLowerCase()
-    .replace(/\.json$/i, "");
-
-  if (!ALLOWED_API_ENDPOINTS.has(endpoint)) {
-    throw new AppError(
-      "`endpoint` is invalid. Allowed values: current, forecast, alerts.",
-      400,
-      "VALIDATION_ERROR",
-    );
-  }
-
-  return endpoint;
-}
-
 module.exports = {
   validateLocation,
   normalizeDateRange,
   validateRecordId,
-  validateApiEndpoint,
 };

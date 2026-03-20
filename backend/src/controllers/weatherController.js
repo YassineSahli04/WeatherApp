@@ -4,7 +4,6 @@ const {
   validateLocation,
   normalizeDateRange,
   validateRecordId,
-  validateApiEndpoint,
 } = require("../validators/weatherValidators");
 const {
   fetchWeatherFromProvider,
@@ -21,12 +20,8 @@ const {
   deleteWeatherRecord,
 } = require("../services/weatherStorageService");
 
-async function buildWeatherPayload(location, dateRange = null, endpoint) {
-  const providerData = await fetchWeatherFromProvider(
-    endpoint,
-    location,
-    dateRange,
-  );
+async function buildWeatherPayload(location, dateRange = null) {
+  const providerData = await fetchWeatherFromProvider(location, dateRange);
   const payload = transformWeatherResponse(providerData, dateRange);
 
   const locationMetadata = await fetchLocationMetadata(
@@ -42,8 +37,7 @@ async function buildWeatherPayload(location, dateRange = null, endpoint) {
 
 async function getWeather(req, res) {
   const location = validateLocation(req.query.location);
-  const apiEndpoint = validateApiEndpoint(req.query.type);
-  const weather = await buildWeatherPayload(location, null, apiEndpoint);
+  const weather = await buildWeatherPayload(location);
   res.status(200).json(weather);
 }
 
