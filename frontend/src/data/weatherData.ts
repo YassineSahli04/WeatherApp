@@ -1,6 +1,12 @@
 export interface WeatherAlertItem {
-  type: string;
-  message: string;
+  headline: string;
+  severity: string;
+  urgency: string;
+  category: string;
+  event: string;
+  effective: string;
+  expires: string;
+  instruction?: string;
 }
 
 export interface WeatherHourlyItem {
@@ -33,7 +39,7 @@ export interface WeatherDashboardData {
   hourly: WeatherHourlyItem[];
   sunrise: string;
   sunset: string;
-  alerts: WeatherAlertItem[];
+  alert: WeatherAlertItem;
 }
 
 export const MOCK_LOCATION = "San Francisco, CA";

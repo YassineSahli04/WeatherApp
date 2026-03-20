@@ -4,7 +4,7 @@ import SearchHeader from "@/components/weather/SearchHeader";
 import WeatherHero from "@/components/weather/WeatherHero";
 import KeyMetrics from "@/components/weather/KeyMetrics";
 import HourlyForecast from "@/components/weather/HourlyForecast";
-import AdditionalInfo from "@/components/weather/AdditionalInfo";
+import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
 import { MOCK_LOCATION } from "@/data/weatherData";
 import { fetchWeatherForLocation } from "@/services/weatherApi";
@@ -40,7 +40,10 @@ const LoadingPlaceholder = () => (
       <div className="h-4 w-32 bg-secondary/80 rounded mb-4" />
       <div className="flex gap-2">
         {Array.from({ length: 8 }).map((_, index) => (
-          <div key={index} className="w-16 h-24 rounded-xl bg-secondary/80 shrink-0" />
+          <div
+            key={index}
+            className="w-16 h-24 rounded-xl bg-secondary/80 shrink-0"
+          />
         ))}
       </div>
     </section>
@@ -96,69 +99,55 @@ const Index = () => {
 
       {!isAwaitingResponse && weatherData && (
         <main className="container mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-5 max-w-4xl">
-        {/* Hero */}
-        <WeatherHero
-          temp={weatherData.current.temp}
-          feelsLike={weatherData.current.feelsLike}
-          condition={weatherData.current.condition}
-          description={weatherData.current.description}
-          icon={weatherData.current.icon}
-          high={weatherData.current.high}
-          low={weatherData.current.low}
-        />
-
-        {/* Key Metrics */}
-        <section>
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">
-            Conditions
-          </h2>
-          <KeyMetrics
+          {/* Hero */}
+          <WeatherHero
+            temp={weatherData.current.temp}
+            feelsLike={weatherData.current.feelsLike}
+            condition={weatherData.current.condition}
+            description={weatherData.current.description}
+            icon={weatherData.current.icon}
             high={weatherData.current.high}
             low={weatherData.current.low}
-            humidity={weatherData.current.humidity}
-            windSpeed={weatherData.current.windSpeed}
-            windDirection={weatherData.current.windDirection}
-            uvIndex={weatherData.current.uvIndex}
-            visibility={weatherData.current.visibility}
-            aqi={weatherData.current.aqi}
-            aqiLabel={weatherData.current.aqiLabel}
-          />
-        </section>
-
-        {/* Hourly Forecast */}
-        <section>
-          <HourlyForecast hours={weatherData.hourly} />
-        </section>
-
-        {/* Additional Info */}
-        <section>
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">
-            Details
-          </h2>
-          <AdditionalInfo
             sunrise={weatherData.sunrise}
             sunset={weatherData.sunset}
-            feelsLike={weatherData.current.feelsLike}
-            temp={weatherData.current.temp}
-            windSpeed={weatherData.current.windSpeed}
-            humidity={weatherData.current.humidity}
-            alerts={weatherData.alerts}
           />
-        </section>
 
-        {/* Map */}
-        <section>
-          <MapSection
-            location={location}
-            lat={weatherData.coordinates.lat}
-            lng={weatherData.coordinates.lng}
-          />
-        </section>
+          {/* Weather Alert */}
+          <WeatherAlert alert={weatherData.alert} />
 
-        {/* Footer */}
-        <footer className="text-center py-4 text-xs text-muted-foreground">
-          Weather data is for demonstration purposes only
-        </footer>
+          {/* Key Metrics */}
+          <section>
+            <h2 className="text-sm font-semibold text-muted-foreground mb-2.5 uppercase tracking-wider">
+              Conditions
+            </h2>
+            <KeyMetrics
+              high={weatherData.current.high}
+              low={weatherData.current.low}
+              humidity={weatherData.current.humidity}
+              windSpeed={weatherData.current.windSpeed}
+              windDirection={weatherData.current.windDirection}
+              uvIndex={weatherData.current.uvIndex}
+              visibility={weatherData.current.visibility}
+              aqi={weatherData.current.aqi}
+              aqiLabel={weatherData.current.aqiLabel}
+            />
+          </section>
+
+          {/* Hourly Forecast */}
+          <section>
+            <HourlyForecast hours={weatherData.hourly} />
+          </section>
+
+
+
+          {/* Map */}
+          <section>
+            <MapSection
+              location={location}
+              lat={weatherData.coordinates.lat}
+              lng={weatherData.coordinates.lng}
+            />
+          </section>
         </main>
       )}
     </div>

@@ -39,10 +39,15 @@ interface BackendWeatherResponse {
     chanceOfSnowPct?: number;
   }>;
   weatherAlerts?: Array<{
-    event?: string;
     headline?: string;
-    description?: string;
     severity?: string;
+    urgency?: string;
+    category?: string;
+    event?: string;
+    effective?: string;
+    expires?: string;
+    description?: string;
+    instruction?: string;
   }>;
 }
 
@@ -154,12 +159,28 @@ function mapHourlyForecast(
   });
 }
 
-function mapAlerts(payload: BackendWeatherResponse): WeatherAlertItem[] {
+function mapAlerts(payload: BackendWeatherResponse): WeatherAlertItem {
   const alerts = payload.weatherAlerts || [];
-  return alerts.map((alert) => ({
-    type: alert.event || alert.headline || "Weather Alert",
-    message: alert.description || alert.severity || "No details available.",
-  }));
+  const primaryAlert = alerts[0] || {};
+  const headline = (primaryAlert.headline || "").trim();
+  const event = (primaryAlert.event || "").trim();
+  const severity = (primaryAlert.severity || "").trim();
+  const urgency = (primaryAlert.urgency || "").trim();
+  const category = (primaryAlert.category || "").trim();
+  const effective = (primaryAlert.effective || "").trim();
+  const expires = (primaryAlert.expires || "").trim();
+  const instruction = (primaryAlert.instruction || "").trim();
+
+  return {
+    headline,
+    severity,
+    urgency,
+    category,
+    event,
+    effective,
+    expires,
+    instruction: instruction || undefined,
+  };
 }
 
 function toDashboardData(
@@ -207,7 +228,7 @@ function toDashboardData(
     hourly: mapHourlyForecast(payload),
     sunrise: payload.today?.sunrise || "-",
     sunset: payload.today?.sunset || "-",
-    alerts: mapAlerts(payload),
+    alert: mapAlerts(payload),
   };
 }
 

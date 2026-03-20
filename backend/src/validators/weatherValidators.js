@@ -158,7 +158,7 @@ function validateApiEndpoint(rawEndpoint) {
     rawEndpoint === null ||
     String(rawEndpoint).trim() === ""
   ) {
-    return "forecast";
+    throw new AppError("`endpoint` must be defined.", 400, "VALIDATION_ERROR");
   }
 
   if (typeof rawEndpoint !== "string") {

@@ -1,5 +1,6 @@
 import React from "react";
-import { Sunrise, Sunset, Thermometer, AlertTriangle } from "lucide-react";
+import { Sunrise, Sunset, AlertTriangle, Clock } from "lucide-react";
+import type { WeatherAlertItem } from "@/data/weatherData";
 
 interface AdditionalInfoProps {
   sunrise: string;
@@ -8,191 +9,131 @@ interface AdditionalInfoProps {
   temp: number;
   windSpeed: number;
   humidity: number;
-  alerts: { type: string; message: string }[];
+  alert: WeatherAlertItem;
 }
 
-interface ParsedAlertSections {
-  WHAT?: string;
-  WHERE?: string;
-  WHEN?: string;
-  IMPACTS?: string;
-  "ADDITIONAL DETAILS"?: string;
+function formatAlertDateTime(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-function cleanAlertText(value: string): string {
-  return value.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
-}
-
-function parseAlertSections(message: string): ParsedAlertSections | null {
-  const normalized = message.replace(/\r/g, "").trim();
-  if (!normalized.includes("*")) {
-    return null;
-  }
-
-  const markerRegex = /\*\s*([A-Z][A-Z ]+)\.\.\.\s*/g;
-  const markers = Array.from(normalized.matchAll(markerRegex));
-  if (!markers.length) {
-    return null;
-  }
-
-  const sections: ParsedAlertSections = {};
-
-  for (let i = 0; i < markers.length; i += 1) {
-    const match = markers[i];
-    const nextMatch = markers[i + 1];
-    const key = match[1].trim() as keyof ParsedAlertSections;
-    const start = (match.index || 0) + match[0].length;
-    const end = nextMatch?.index ?? normalized.length;
-    const value = cleanAlertText(normalized.slice(start, end));
-
-    if (value) {
-      sections[key] = value;
-    }
-  }
-
-  return Object.keys(sections).length ? sections : null;
-}
-
-function toImpactItems(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean)
-    .slice(0, 3);
+function buildConciseInstruction(instruction?: string): string | null {
+  if (!instruction) return null;
+  const normalized = instruction.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  const sentences = normalized.match(/[^.!?]+[.!?]?/g) || [];
+  return sentences.slice(0, 3).join(" ").trim();
 }
 
 const AdditionalInfo: React.FC<AdditionalInfoProps> = ({
-  sunrise, sunset, feelsLike, temp, windSpeed, humidity, alerts,
+  sunrise,
+  sunset,
+  alert,
 }) => {
-  const feelsExplanation = feelsLike < temp
-    ? `Wind chill makes it feel cooler. Wind at ${windSpeed} km/h lowers the perceived temperature.`
-    : feelsLike > temp
-    ? `High humidity (${humidity}%) makes it feel warmer than the actual temperature.`
-    : "The perceived temperature matches the actual temperature.";
+  const startsAt = formatAlertDateTime(alert?.effective);
+  const endsAt = formatAlertDateTime(alert?.expires);
+  const conciseInstruction = buildConciseInstruction(alert?.instruction);
+  const hasAlert = Boolean(
+    alert?.event || alert?.headline || alert?.severity || alert?.urgency
+  );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {/* Sunrise / Sunset */}
-      <div className="weather-card animate-fade-in">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Sun Cycle</h3>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-weather-sunrise/10 flex items-center justify-center">
-              <Sunrise className="w-4.5 h-4.5 text-weather-sunrise" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Sunrise</p>
-              <p className="text-sm font-semibold text-foreground">{sunrise}</p>
-            </div>
+    <div className="flex flex-col lg:flex-row gap-6 mt-6 w-full animate-fade-in">
+      <div className="w-full lg:w-[340px] shrink-0 rounded-[32px] border border-border/50 bg-card p-6 md:p-8 shadow-sm">
+        {/* Header */}
+        <div className="flex items-center gap-3 text-muted-foreground mb-8">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/10 text-amber-500">
+            <Sunrise className="h-5 w-5" />
           </div>
-
-          {/* Simple sun arc */}
-          <div className="flex-1 mx-4 relative h-8">
-            <div className="absolute bottom-0 left-0 right-0 h-px bg-border" />
-            <div className="absolute bottom-0 left-[10%] right-[10%] h-8 border-t-2 border-dashed border-weather-sunrise/30 rounded-t-full" />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-weather-sunset/10 flex items-center justify-center">
-              <Sunset className="w-4.5 h-4.5 text-weather-sunset" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Sunset</p>
-              <p className="text-sm font-semibold text-foreground">{sunset}</p>
-            </div>
-          </div>
+          <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground/70">Sun Cycle</span>
         </div>
-      </div>
 
-      {/* Feels Like Explanation */}
-      <div className="weather-card animate-fade-in">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Feels Like</h3>
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Thermometer className="w-4.5 h-4.5 text-primary" />
-          </div>
+        {/* Sunrise */}
+        <div className="flex items-center justify-between mb-5">
           <div>
-            <p className="text-2xl font-semibold text-foreground">{feelsLike}°C</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{feelsExplanation}</p>
+            <div className="text-sm font-semibold text-muted-foreground/80 mb-1">Sunrise</div>
+            <div className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">{sunrise}</div>
           </div>
+          <Sunrise className="h-10 w-10 text-amber-500 stroke-[2]" />
+        </div>
+
+        <div className="h-px w-full bg-border/60 my-6" />
+
+        {/* Sunset */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-muted-foreground/80 mb-1">Sunset</div>
+            <div className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">{sunset}</div>
+          </div>
+          <Sunset className="h-10 w-10 text-orange-500 stroke-[2]" />
         </div>
       </div>
 
-      {/* Weather Alerts */}
-      {alerts.length > 0 && (
-        <div className="md:col-span-2 animate-fade-in">
-          {alerts.map((alert, i) => (
-            <div key={i} className="weather-card border border-weather-alert/30 bg-weather-alert/5">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-weather-alert/15 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-4.5 h-4.5 text-weather-alert" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{alert.type}</p>
-                  {(() => {
-                    const parsed = parseAlertSections(alert.message);
-                    if (!parsed) {
-                      return (
-                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-line">
-                          {alert.message}
-                        </p>
-                      );
-                    }
+      {hasAlert && (
+        <div className="flex-1 rounded-[32px] border border-destructive/20 bg-destructive/[0.08] p-6 lg:p-8 shadow-sm">
+          {/* Top Row: Title + Badge */}
+          <div className="flex flex-wrap items-center gap-4 mb-3">
+            <h3 className="text-2xl font-bold text-foreground">
+              {alert.event || alert.headline || "Weather Alert"}
+            </h3>
+            <span className="rounded-full bg-destructive/20 px-3 py-1 text-xs font-bold text-destructive">
+              Active Warning
+            </span>
+          </div>
 
-                    const impactItems = parsed.IMPACTS ? toImpactItems(parsed.IMPACTS) : [];
+          {/* Headline */}
+          {alert.headline && alert.headline !== alert.event && (
+            <p className="text-base font-medium text-destructive mb-4">
+              {alert.headline}
+            </p>
+          )}
 
-                    return (
-                      <div className="mt-1.5 space-y-2">
-                        {parsed.WHAT && (
-                          <p className="text-xs text-foreground/90 leading-relaxed">
-                            <span className="font-semibold">What: </span>
-                            {parsed.WHAT}
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-1.5">
-                          {parsed.WHERE && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-secondary/60 text-secondary-foreground">
-                              <span className="font-semibold">Where:</span> {parsed.WHERE}
-                            </span>
-                          )}
-                          {parsed.WHEN && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-secondary/60 text-secondary-foreground">
-                              <span className="font-semibold">When:</span> {parsed.WHEN}
-                            </span>
-                          )}
-                        </div>
-
-                        {impactItems.length > 0 && (
-                          <div>
-                            <p className="text-[11px] font-semibold text-foreground mb-1">Impacts</p>
-                            <ul className="space-y-1">
-                              {impactItems.map((item) => (
-                                <li key={item} className="text-xs text-muted-foreground leading-relaxed">
-                                  - {item}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {parsed["ADDITIONAL DETAILS"] && (
-                          <details className="group">
-                            <summary className="text-[11px] font-semibold text-foreground cursor-pointer">
-                              Additional details
-                            </summary>
-                            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                              {parsed["ADDITIONAL DETAILS"]}
-                            </p>
-                          </details>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
+          {/* Time Range */}
+          {(startsAt || endsAt) && (
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-6">
+              <Clock className="h-4 w-4 text-destructive" />
+              <span>{startsAt || "Unknown"} &rarr; {endsAt || "Unknown"}</span>
             </div>
-          ))}
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6 mb-6">
+            {/* Big warning icon */}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive">
+              <AlertTriangle className="h-7 w-7 stroke-[2.5]" />
+            </div>
+            
+            {/* Severity & Urgency labels */}
+            <div className="flex flex-wrap items-center gap-6">
+              {alert.severity && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Severity:</span>
+                  <span className="text-sm font-bold text-foreground">{alert.severity}</span>
+                </div>
+              )}
+              {alert.urgency && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Urgency:</span>
+                  <span className="text-sm font-bold text-foreground">{alert.urgency}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Instruction Box */}
+          {conciseInstruction && (
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/[0.04] p-5">
+              <p className="text-sm md:text-base leading-relaxed text-foreground/80 font-medium tracking-wide">
+                {conciseInstruction}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -200,3 +141,4 @@ const AdditionalInfo: React.FC<AdditionalInfoProps> = ({
 };
 
 export default AdditionalInfo;
+
