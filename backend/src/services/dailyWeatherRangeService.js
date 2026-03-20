@@ -1,3 +1,6 @@
+const { env } = require("../config/env");
+const { AppError } = require("../utils/appError");
+
 function startOfTodayUtc() {
   const now = new Date();
   return new Date(
@@ -18,6 +21,43 @@ function formatIsoDate(date) {
 
 function minusDaysUtc(date, days) {
   return new Date(date.getTime() - days * 86400000);
+}
+
+function validateDailyDateRange(dateRange) {
+  if (!dateRange?.startDate || !dateRange?.endDate) {
+    throw new AppError(
+      "`dateRange.start` and `dateRange.end` are required.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const start = parseIsoDate(dateRange.startDate);
+  const end = parseIsoDate(dateRange.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new AppError("Invalid date range.", 400, "VALIDATION_ERROR");
+  }
+
+  const minHistoryDate = parseIsoDate("2010-01-01");
+  if (start < minHistoryDate || end < minHistoryDate) {
+    throw new AppError(
+      "Date range must be on or after 2010-01-01.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const today = startOfTodayUtc();
+  const maxForecastDate = new Date(
+    today.getTime() + (env.WEATHER_FORECAST_MAX_DAYS - 1) * 86400000,
+  );
+  if (end > maxForecastDate) {
+    throw new AppError(
+      `Date range end exceeds forecast limit (max ${env.WEATHER_FORECAST_MAX_DAYS} days from today).`,
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
 }
 
 function splitDateRangeForDailyApis(dateRange) {
@@ -63,6 +103,7 @@ function mergeDailyForecast(historyPayload, forecastPayload) {
 }
 
 module.exports = {
+  validateDailyDateRange,
   splitDateRangeForDailyApis,
   mergeDailyForecast,
 };

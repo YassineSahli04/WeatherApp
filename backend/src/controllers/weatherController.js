@@ -13,6 +13,7 @@ const {
   API_ENDPOINTS,
 } = require("../services/weatherApiService");
 const {
+  validateDailyDateRange,
   splitDateRangeForDailyApis,
   mergeDailyForecast,
 } = require("../services/dailyWeatherRangeService");
@@ -57,6 +58,7 @@ async function getDailyWeatherData(req, res) {
   const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
   const location = `${lat},${lon}`;
   const dateRange = normalizeDateRange(req.body.dateRange);
+  validateDailyDateRange(dateRange);
   const { historyRange, forecastRange } = splitDateRangeForDailyApis(dateRange);
 
   const [historyPayload, forecastPayload] = await Promise.all([
