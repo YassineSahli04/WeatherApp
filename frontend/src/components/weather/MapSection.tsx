@@ -1,5 +1,11 @@
-import React from "react";
-import { MapPin } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { MapPin, AlertCircle } from "lucide-react";
+import Map, {
+  Marker,
+  NavigationControl,
+  FullscreenControl,
+} from "react-map-gl/mapbox";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 interface MapSectionProps {
   location: string;
@@ -7,56 +13,84 @@ interface MapSectionProps {
   lng: number;
 }
 
+const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
 const MapSection: React.FC<MapSectionProps> = ({ location, lat, lng }) => {
+  const [hasToken, setHasToken] = useState<boolean>(!!TOKEN && TOKEN !== "your_mapbox_token_here");
+  const [viewState, setViewState] = useState({
+    longitude: lng,
+    latitude: lat,
+    zoom: 11
+  });
+
+  // Update view state when lat/lng props change
+  useEffect(() => {
+    setViewState(prev => ({
+      ...prev,
+      longitude: lng,
+      latitude: lat,
+    }));
+  }, [lat, lng]);
+
   return (
-    <div className="weather-card animate-fade-in overflow-hidden">
-      <h3 className="text-sm font-semibold text-foreground mb-3">Location</h3>
-      <div className="relative w-full aspect-[16/9] md:aspect-[2/1] rounded-xl overflow-hidden bg-secondary">
-        {/* Static map image from OpenStreetMap tiles */}
-        <img
-          src={`https://static-maps.yandex.ru/v1?lang=en_US&ll=${lng},${lat}&z=11&size=650,300&l=map`}
-          alt={`Map of ${location}`}
-          className="w-full h-full object-cover opacity-0"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-
-        {/* Fallback styled map */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-secondary to-primary/10">
-          {/* Grid lines to simulate map */}
-          <div className="absolute inset-0" style={{
-            backgroundImage: `
-              linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
-              linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px)
-            `,
-            backgroundSize: '40px 40px',
-          }} />
-
-          {/* Roads simulation */}
-          <div className="absolute top-1/3 left-0 right-0 h-px bg-muted-foreground/20" />
-          <div className="absolute top-2/3 left-0 right-0 h-px bg-muted-foreground/15" />
-          <div className="absolute left-1/4 top-0 bottom-0 w-px bg-muted-foreground/15" />
-          <div className="absolute left-2/3 top-0 bottom-0 w-px bg-muted-foreground/20" />
-
-          {/* Pin marker */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full flex flex-col items-center animate-fade-in">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg">
-              <MapPin className="w-4 h-4 text-primary-foreground" />
+    <div className="weather-card animate-fade-in overflow-hidden rounded-[32px] p-6 shadow-sm border border-border/40">
+      <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground/70 mb-5">Map View</h3>
+      
+      <div className="relative w-full aspect-[16/9] md:aspect-[2/1] rounded-2xl overflow-hidden bg-secondary/30 ring-1 ring-border border border-white/10 shadow-inner group">
+        
+        {hasToken ? (
+          <Map
+            {...viewState}
+            onMove={evt => setViewState(evt.viewState)}
+            mapStyle="mapbox://styles/mapbox/navigation-night-v1"
+            mapboxAccessToken={TOKEN}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <FullscreenControl position="top-right" />
+            <NavigationControl position="bottom-right" showCompass={false} />
+            
+            <Marker longitude={lng} latitude={lat} anchor="bottom">
+              <div className="relative flex flex-col items-center animate-bounce-short">
+                {/* Custom Marker */}
+                <div className="absolute -inset-4 bg-primary/20 rounded-full blur-md animate-pulse" />
+                <div className="relative w-10 h-10 rounded-full bg-gradient-to-tr from-primary to-primary/80 flex items-center justify-center shadow-xl border-2 border-background z-10">
+                  <MapPin className="w-5 h-5 text-primary-foreground fill-primary-foreground/20" />
+                </div>
+                <div className="w-2 h-2 bg-primary rounded-full mt-1 opacity-80" />
+                <div className="w-6 h-1 bg-black/30 rounded-full mt-1 blur-[2px]" />
+              </div>
+            </Marker>
+          </Map>
+        ) : (
+          /* Fallback when no token is provided */
+          <div className="absolute inset-0 bg-secondary flex flex-col items-center justify-center text-center p-6">
+            <div className="w-16 h-16 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mb-4">
+              <AlertCircle className="w-8 h-8" />
             </div>
-            <div className="w-2 h-2 bg-primary rounded-full mt-0.5 opacity-50" />
-            <div className="w-6 h-1.5 bg-foreground/10 rounded-full mt-0.5 blur-sm" />
+            <h4 className="text-lg font-bold text-foreground mb-2">Mapbox Token Required</h4>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+              To display the interactive map, you need to add your Mapbox Access Token to the environment variables.
+            </p>
+            <div className="bg-background/80 backdrop-blur border border-border/50 rounded-lg px-4 py-3 text-left">
+              <code className="text-xs text-primary font-mono block mb-1">.env</code>
+              <code className="text-xs text-foreground font-mono">VITE_MAPBOX_TOKEN=pk.eyJ1...</code>
+            </div>
+            
+            {/* Coordinates label even without map */}
+            <div className="mt-8 text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              {lat.toFixed(4)}°N, {Math.abs(lng).toFixed(4)}°{lng < 0 ? "W" : "E"}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Coordinates label */}
-        <div className="absolute bottom-2 right-2 bg-card/90 backdrop-blur-sm rounded-lg px-2.5 py-1 text-xs text-muted-foreground border border-border/50">
-          {lat.toFixed(4)}°N, {Math.abs(lng).toFixed(4)}°{lng < 0 ? "W" : "E"}
-        </div>
-
-        {/* Location label */}
-        <div className="absolute top-2 left-2 bg-card/90 backdrop-blur-sm rounded-lg px-2.5 py-1 text-xs font-medium text-foreground border border-border/50 flex items-center gap-1.5">
-          <MapPin className="w-3 h-3 text-primary" />
-          {location}
-        </div>
+        {/* Floating Location label inside the map (only if map is active) */}
+        {hasToken && (
+          <div className="absolute top-4 left-4 bg-background/80 backdrop-blur-md rounded-xl px-4 py-2 text-sm font-semibold text-foreground border border-border/50 shadow-lg flex items-center gap-2 transition-opacity duration-300 opacity-90 group-hover:opacity-100 z-10">
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            {location}
+          </div>
+        )}
       </div>
     </div>
   );
