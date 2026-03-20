@@ -1,28 +1,15 @@
 const { env } = require("../config/env");
 const { AppError } = require("../utils/appError");
+const {
+  parseIsoDate,
+  startOfTodayUtc,
+  daysBetweenInclusive,
+} = require("../utils/dateUtils");
 
 const API_ENDPOINTS = Object.freeze({
   FORECAST: "forecast",
   HISTORY: "history",
 });
-
-function parseIsoDate(dateText) {
-  return new Date(`${dateText}T00:00:00Z`);
-}
-
-function startOfTodayUtc() {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-}
-
-function daysBetweenInclusive(startDateText, endDateText) {
-  const start = parseIsoDate(startDateText);
-  const end = parseIsoDate(endDateText);
-  const diffMs = end.getTime() - start.getTime();
-  return Math.floor(diffMs / 86400000) + 1;
-}
 
 function resolveForecastDays(dateRange) {
   if (!dateRange) {

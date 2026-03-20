@@ -1,27 +1,12 @@
 const { env } = require("../config/env");
 const { AppError } = require("../utils/appError");
-
-function startOfTodayUtc() {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-}
-
-function parseIsoDate(dateText) {
-  return new Date(`${dateText}T00:00:00Z`);
-}
-
-function formatIsoDate(date) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function minusDaysUtc(date, days) {
-  return new Date(date.getTime() - days * 86400000);
-}
+const {
+  startOfTodayUtc,
+  parseIsoDate,
+  formatIsoDate,
+  minusDaysUtc,
+  addDaysUtc,
+} = require("../utils/dateUtils");
 
 function validateDailyDateRange(dateRange) {
   if (!dateRange?.startDate || !dateRange?.endDate) {
@@ -48,9 +33,7 @@ function validateDailyDateRange(dateRange) {
   }
 
   const today = startOfTodayUtc();
-  const maxForecastDate = new Date(
-    today.getTime() + (env.WEATHER_FORECAST_MAX_DAYS - 1) * 86400000,
-  );
+  const maxForecastDate = addDaysUtc(today, env.WEATHER_FORECAST_MAX_DAYS - 1);
   if (end > maxForecastDate) {
     throw new AppError(
       `Date range end exceeds forecast limit (max ${env.WEATHER_FORECAST_MAX_DAYS} days from today).`,
