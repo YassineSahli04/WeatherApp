@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Search, MapPin, Navigation, X } from "lucide-react";
+import { Map as MapboxMap, Marker, NavigationControl } from "react-map-gl/mapbox";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 interface SearchHeaderProps {
   displayLocation: string;
@@ -430,21 +432,18 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
       return;
     }
 
-    if (!isValidToken(MAPBOX_TOKEN)) {
-      setError("Mapbox token missing. Set VITE_MAPBOX_TOKEN to use coordinates.");
-      return;
-    }
-
     setIsSubmitting(true);
     setError("");
     try {
-      const city = await reverseGeocodeNearestCity(latNum, lngNum);
-      if (!city) {
-        setError("Unable to resolve these coordinates to a city.");
-        return;
-      }
+      const displayLat = latNum.toFixed(4);
+      const displayLng = Math.abs(lngNum).toFixed(4);
+      const displayDir = lngNum < 0 ? "W" : "E";
 
-      applySuggestion(city);
+      onLocationChange({
+        queryLocation: toCoordinateLocation(latNum, lngNum),
+        displayLocation: `${displayLat}°N, ${displayLng}°${displayDir}`,
+      });
+      
       setShowCoords(false);
       setLat("");
       setLng("");
@@ -610,32 +609,80 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
           >
             GPS
           </button>
-        </div>
 
-        {showCoords && (
-          <div className="mt-2 flex items-center gap-2 animate-fade-in">
-            <input
-              type="number"
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-              placeholder="Latitude"
-              className="h-9 flex-1 rounded-lg border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <input
-              type="number"
-              value={lng}
-              onChange={(e) => setLng(e.target.value)}
-              placeholder="Longitude"
-              className="h-9 flex-1 rounded-lg border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <button
-              onClick={() => void handleCoordsSubmit()}
-              className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              Go
-            </button>
+          {showCoords && (
+            <div className="absolute top-full right-0 mt-3 w-[calc(100vw-2rem)] max-w-none sm:w-[500px] md:w-[600px] z-50 animate-fade-in space-y-4 p-4 lg:p-5 bg-card rounded-2xl border border-border/50 shadow-xl origin-top-right">
+              <h3 className="text-sm font-semibold text-foreground">Pin Location on Map</h3>
+              <div className="relative w-full h-[280px] rounded-xl overflow-hidden bg-secondary border border-border/50">
+               {isValidToken(MAPBOX_TOKEN) ? (
+                 <MapboxMap
+                   initialViewState={{
+                     longitude: Number(lng) || 0,
+                     latitude: Number(lat) || 20,
+                     zoom: 1.5
+                   }}
+                   mapStyle="mapbox://styles/mapbox/navigation-night-v1"
+                   mapboxAccessToken={MAPBOX_TOKEN}
+                   onClick={(e) => {
+                     setLat(e.lngLat.lat.toFixed(6));
+                     setLng(e.lngLat.lng.toFixed(6));
+                   }}
+                   cursor="crosshair"
+                 >
+                   <NavigationControl position="bottom-right" showCompass={false} />
+                   {(lat && lng) ? (
+                     <Marker 
+                        longitude={Number(lng)} 
+                        latitude={Number(lat)} 
+                        anchor="bottom"
+                        draggable
+                        onDragEnd={(e) => {
+                          setLat(e.lngLat.lat.toFixed(6));
+                          setLng(e.lngLat.lng.toFixed(6));
+                        }}
+                     >
+                        <div className="relative flex flex-col items-center">
+                          <MapPin className="w-8 h-8 text-primary fill-primary-foreground/20 drop-shadow-md" />
+                        </div>
+                     </Marker>
+                   ) : null}
+                 </MapboxMap>
+               ) : (
+                 <div className="w-full h-full flex items-center justify-center p-4 text-center">
+                    <p className="text-sm text-muted-foreground">Mapbox token missing. Add VITE_MAPBOX_TOKEN in .env to enable the interactive map.</p>
+                 </div>
+               )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                placeholder="Latitude"
+                className="h-10 flex-1 rounded-xl border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <input
+                type="number"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                placeholder="Longitude"
+                className="h-10 flex-1 rounded-xl border border-border/50 bg-secondary/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                onClick={() => void handleCoordsSubmit()}
+                className="h-10 rounded-xl bg-primary px-6 text-sm font-semibold tracking-wide text-primary-foreground transition-colors hover:bg-primary/90 shadow-sm"
+              >
+                Launch
+              </button>
+            </div>
+            
+            <p className="text-[11px] text-muted-foreground uppercase tracking-widest text-center mt-1">
+              Direct API query without city check
+            </p>
           </div>
         )}
+        </div>
 
         {error && (
           <p className="mt-1.5 text-xs text-destructive animate-fade-in">
