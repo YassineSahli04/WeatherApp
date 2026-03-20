@@ -45,17 +45,6 @@ async function buildWeatherPayload(
   return payload;
 }
 
-async function getCurrentWeatherConditions(req, res) {
-  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
-  const location = `${lat},${lon}`;
-  const api = API_ENDPOINTS.FORECAST;
-  const weather = await buildWeatherPayload(api, location, null, true);
-  res.status(200).json(weather);
-}
-
-async function getDailyWeatherData(req, res) {
-  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
-  const location = `${lat},${lon}`;
 async function buildMergedDailyForecastPayload(location, dateRange) {
   validateDailyDateRange(dateRange);
   const { historyRange, forecastRange } = splitDateRangeForDailyApis(dateRange);
