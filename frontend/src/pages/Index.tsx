@@ -6,7 +6,7 @@ import KeyMetrics from "@/components/weather/KeyMetrics";
 import HourlyForecast from "@/components/weather/HourlyForecast";
 import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
-import { MOCK_LOCATION, MOCK_LOCATION_LABEL } from "@/data/weatherData";
+import { MOCK_COORDINATES, MOCK_LOCATION_LABEL } from "@/data/weatherData";
 import { fetchWeatherForLocation } from "@/services/weatherApi";
 
 const LoadingPlaceholder = () => (
@@ -66,12 +66,15 @@ const LoadingPlaceholder = () => (
 );
 
 const Index = () => {
-  const [queryLocation, setQueryLocation] = useState(MOCK_LOCATION);
+  const [queryCoordinates, setQueryCoordinates] = useState(MOCK_COORDINATES);
   const [displayLocation, setDisplayLocation] = useState(MOCK_LOCATION_LABEL);
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ["weather", queryLocation],
-    queryFn: () => fetchWeatherForLocation(queryLocation),
-    enabled: queryLocation.trim().length > 0,
+    queryKey: ["weather", queryCoordinates.lat, queryCoordinates.lon],
+    queryFn: () =>
+      fetchWeatherForLocation(queryCoordinates.lat, queryCoordinates.lon),
+    enabled:
+      Number.isFinite(queryCoordinates.lat) &&
+      Number.isFinite(queryCoordinates.lon),
     retry: 1,
     staleTime: 60 * 1000,
   });
@@ -90,8 +93,8 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <SearchHeader
         displayLocation={displayLocation}
-        onLocationChange={({ queryLocation: nextQueryLocation, displayLocation: nextDisplayLocation }) => {
-          setQueryLocation(nextQueryLocation);
+        onLocationChange={({ lat, lon, displayLocation: nextDisplayLocation }) => {
+          setQueryCoordinates({ lat, lon });
           setDisplayLocation(nextDisplayLocation);
         }}
       />

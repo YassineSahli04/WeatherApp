@@ -150,8 +150,40 @@ function validateRecordId(rawId) {
   return id;
 }
 
+function validateLatLonQuery(rawLat, rawLon) {
+  if (rawLat === undefined || rawLon === undefined) {
+    throw new AppError(
+      "`lat` and `lon` query parameters are required.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const lat = Number.parseFloat(String(rawLat).trim());
+  const lon = Number.parseFloat(String(rawLon).trim());
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new AppError(
+      "`lat` and `lon` must be valid decimal numbers.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw new AppError(
+      "`lat` must be between -90 and 90, and `lon` between -180 and 180.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  return { lat, lon };
+}
+
 module.exports = {
   validateLocation,
   normalizeDateRange,
   validateRecordId,
+  validateLatLonQuery,
 };

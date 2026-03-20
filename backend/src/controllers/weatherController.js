@@ -4,6 +4,7 @@ const {
   validateLocation,
   normalizeDateRange,
   validateRecordId,
+  validateLatLonQuery,
 } = require("../validators/weatherValidators");
 const {
   fetchWeatherFromProvider,
@@ -36,7 +37,8 @@ async function buildWeatherPayload(location, dateRange = null) {
 }
 
 async function getWeather(req, res) {
-  const location = validateLocation(req.query.location);
+  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+  const location = `${lat},${lon}`;
   const weather = await buildWeatherPayload(location);
   res.status(200).json(weather);
 }

@@ -42,5 +42,8 @@ export interface WeatherDashboardData {
   alert: WeatherAlertItem;
 }
 
-export const MOCK_LOCATION = "37.77,-122.42";
+export const MOCK_COORDINATES = {
+  lat: 37.77,
+  lon: -122.42,
+};
 export const MOCK_LOCATION_LABEL = "San Francisco";

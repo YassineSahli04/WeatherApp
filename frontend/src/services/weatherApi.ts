@@ -231,11 +231,22 @@ function toDashboardData(
 }
 
 export async function fetchWeatherForLocation(
-  location: string,
+  lat: number,
+  lon: number,
 ): Promise<WeatherDashboardData> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("Latitude/longitude must be valid decimal numbers.");
+  }
+
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw new Error(
+      "Latitude must be between -90 and 90, and longitude between -180 and 180.",
+    );
+  }
+
   const apiBaseUrl = getApiBaseUrl();
   const response = await fetch(
-    `${apiBaseUrl}/weather?location=${encodeURIComponent(location)}`,
+    `${apiBaseUrl}/weather?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
   );
   if (!response.ok) {
     const errorPayload = (await response
@@ -247,5 +258,5 @@ export async function fetchWeatherForLocation(
   }
 
   const payload = (await response.json()) as BackendWeatherResponse;
-  return toDashboardData(payload, location);
+  return toDashboardData(payload, `${lat},${lon}`);
 }

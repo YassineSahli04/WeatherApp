@@ -6,7 +6,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 interface SearchHeaderProps {
   displayLocation: string;
   onLocationChange: (selection: {
-    queryLocation: string;
+    lat: number;
+    lon: number;
     displayLocation: string;
   }) => void;
 }
@@ -39,10 +40,6 @@ const MAPBOX_TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN || "").trim();
 
 function isValidToken(token: string): boolean {
   return Boolean(token && token !== "your_mapbox_token_here");
-}
-
-function toCoordinateLocation(lat: number, lng: number): string {
-  return `${lat},${lng}`;
 }
 
 function parseCoordinateQuery(
@@ -322,7 +319,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
 
   const applySuggestion = (selection: GeocodeSuggestion) => {
     onLocationChange({
-      queryLocation: toCoordinateLocation(selection.lat, selection.lng),
+      lat: selection.lat,
+      lon: selection.lng,
       displayLocation: selection.displayName,
     });
     setQuery("");
@@ -440,7 +438,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
       const displayDir = lngNum < 0 ? "W" : "E";
 
       onLocationChange({
-        queryLocation: toCoordinateLocation(latNum, lngNum),
+        lat: latNum,
+        lon: lngNum,
         displayLocation: `${displayLat}°N, ${displayLng}°${displayDir}`,
       });
       
