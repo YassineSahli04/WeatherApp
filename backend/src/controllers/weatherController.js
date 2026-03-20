@@ -20,9 +20,16 @@ const {
   updateWeatherRecord,
   deleteWeatherRecord,
 } = require("../services/weatherStorageService");
+const { isWeatherDataAvailable } = require("../db/WeatherTable");
 
-async function buildWeatherPayload(location, dateRange = null) {
-  const providerData = await fetchWeatherFromProvider(location, dateRange);
+const API_ENDPOINTS = Object.freeze({
+  CURRENT: "current",
+  FORECAST: "forecast",
+  FUTURE: "future",
+});
+
+async function buildWeatherPayload(api, location, dateRange = null, requestId) {
+  const providerData = await fetchWeatherFromProvider(api, location, dateRange);
   const payload = transformWeatherResponse(providerData, dateRange);
 
   const locationMetadata = await fetchLocationMetadata(
@@ -36,25 +43,36 @@ async function buildWeatherPayload(location, dateRange = null) {
   return payload;
 }
 
-async function getWeather(req, res) {
+async function getCurrentWeatherConditions(req, res) {
   const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
   const location = `${lat},${lon}`;
-  const weather = await buildWeatherPayload(location);
+  const api = API_ENDPOINTS.CURRENT;
+  const weather = await buildWeatherPayload(api, location);
   res.status(200).json(weather);
 }
 
-async function createWeather(req, res) {
-  const location = validateLocation(req.body.location);
-  const dateRange = normalizeDateRange(req.body.dateRange || null);
+async function getOrCreateWeather(req, res) {
+  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+  const dateRange = normalizeDateRange(req.body.dateRange);
   const weather = await buildWeatherPayload(location, dateRange);
 
-  const record = await createWeatherRecord({
-    location,
-    latitude: weather.location.latitude,
-    longitude: weather.location.longitude,
-    dateRange,
-    weatherData: weather,
-  });
+  const isWeatherDataAvailable = isWeatherDataAvailable(lat, lon);
+
+  let record;
+  switch (isWeatherDataAvailable.exists) {
+    case false:
+      record = await createWeatherRecord({
+        location,
+        latitude: weather.location.latitude,
+        longitude: weather.location.longitude,
+        dateRange,
+        weatherData: weather,
+      });
+    case true:
+      const doRowNeedsUpdate = doRowNeedsUpdate(isWeatherDataAvailable.id);
+      if (doRowNeedsUpdate) {
+      }
+  }
 
   res.status(201).json(record);
 }
@@ -139,10 +157,14 @@ async function exportWeather(req, res) {
 }
 
 module.exports = {
-  getWeather,
-  createWeather,
+  getWeather: getCurrentWeatherConditions,
+  createWeather: getOrCreateWeather,
   getWeatherHistoryController,
   updateWeather,
   deleteWeather,
   exportWeather,
+  __testing: {
+    API_ENDPOINTS,
+    buildWeatherPayload,
+  },
 };

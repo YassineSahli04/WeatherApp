@@ -160,7 +160,7 @@ async function fetchJson(url, options = {}) {
   }
 }
 
-async function fetchWeatherFromProvider(location, dateRange = null) {
+async function fetchWeatherFromProvider(api, location, dateRange = null) {
   if (!env.WEATHER_API_KEY) {
     throw new AppError(
       "Missing WEATHER_API_KEY. Configure it in backend/.env or docker-compose environment.",
@@ -179,7 +179,7 @@ async function fetchWeatherFromProvider(location, dateRange = null) {
     alerts: "yes",
   });
 
-  const url = `${env.WEATHER_API_BASE_URL}/forecast.json?${params.toString()}`;
+  const url = `${env.WEATHER_API_BASE_URL}/${api}.json?${params.toString()}`;
   const { response, body } = await fetchJson(url);
 
   if (!response.ok) {
