@@ -8,11 +8,14 @@ const {
 } = require("../validators/weatherValidators");
 const {
   fetchWeatherFromProvider,
-  transformWeatherResponse,
+  transformCurrentWeatherResponse,
+  transformDailyWeatherResponse,
+  API_ENDPOINTS,
 } = require("../services/weatherApiService");
 const {
-  fetchLocationMetadata,
-} = require("../services/locationMetadataService");
+  splitDateRangeForDailyApis,
+  mergeDailyForecast,
+} = require("../services/dailyWeatherRangeService");
 const {
   createWeatherRecord,
   getWeatherRecordById,
@@ -22,22 +25,21 @@ const {
 } = require("../services/weatherStorageService");
 const { isWeatherDataAvailable } = require("../db/WeatherTable");
 
-const API_ENDPOINTS = Object.freeze({
-  CURRENT: "current",
-  FORECAST: "forecast",
-  FUTURE: "future",
-});
-
-async function buildWeatherPayload(api, location, dateRange = null, requestId) {
+async function buildWeatherPayload(
+  api,
+  location,
+  dateRange = null,
+  isCurrentWeather = true,
+) {
   const providerData = await fetchWeatherFromProvider(api, location, dateRange);
-  const payload = transformWeatherResponse(providerData, dateRange);
 
-  const locationMetadata = await fetchLocationMetadata(
-    payload.location.latitude,
-    payload.location.longitude,
-  );
-  if (locationMetadata) {
-    payload.locationMetadata = locationMetadata;
+  let payload;
+  if (isCurrentWeather) {
+    payload = transformCurrentWeatherResponse(providerData, dateRange);
+  } else {
+    payload = {
+      forecast: transformDailyWeatherResponse(providerData, dateRange),
+    };
   }
 
   return payload;
@@ -46,9 +48,50 @@ async function buildWeatherPayload(api, location, dateRange = null, requestId) {
 async function getCurrentWeatherConditions(req, res) {
   const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
   const location = `${lat},${lon}`;
-  const api = API_ENDPOINTS.CURRENT;
-  const weather = await buildWeatherPayload(api, location);
+  const api = API_ENDPOINTS.FORECAST;
+  const weather = await buildWeatherPayload(api, location, null, true);
   res.status(200).json(weather);
+}
+
+async function getDailyWeatherData(req, res) {
+  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+  const location = `${lat},${lon}`;
+  const dateRange = normalizeDateRange(req.body.dateRange);
+  const { historyRange, forecastRange } = splitDateRangeForDailyApis(dateRange);
+
+  const [historyPayload, forecastPayload] = await Promise.all([
+    historyRange
+      ? buildWeatherPayload(
+          API_ENDPOINTS.HISTORY,
+          location,
+          historyRange,
+          false,
+        )
+      : Promise.resolve(null),
+    forecastRange
+      ? buildWeatherPayload(
+          API_ENDPOINTS.FORECAST,
+          location,
+          forecastRange,
+          false,
+        )
+      : Promise.resolve(null),
+  ]);
+
+  const basePayload = forecastPayload || historyPayload;
+  if (!basePayload) {
+    throw new AppError(
+      "Unable to resolve weather data range.",
+      500,
+      "INTERNAL",
+    );
+  }
+
+  const forecastday = mergeDailyForecast(historyPayload, forecastPayload);
+
+  res.status(200).json({
+    forecast: { forecastday },
+  });
 }
 
 async function getOrCreateWeather(req, res) {
@@ -158,6 +201,7 @@ async function exportWeather(req, res) {
 
 module.exports = {
   getWeather: getCurrentWeatherConditions,
+  getDailyWeatherData,
   createWeather: getOrCreateWeather,
   getWeatherHistoryController,
   updateWeather,

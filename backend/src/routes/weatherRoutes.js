@@ -2,6 +2,7 @@ const express = require("express");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const {
   getWeather,
+  getDailyWeatherData,
   createWeather,
   getWeatherHistoryController,
   updateWeather,
@@ -12,6 +13,7 @@ const {
 const router = express.Router();
 
 router.get("/", asyncHandler(getWeather));
+router.get("/daily", asyncHandler(getDailyWeatherData));
 router.post("/", asyncHandler(createWeather));
 router.get("/history", asyncHandler(getWeatherHistoryController));
 router.get("/export", asyncHandler(exportWeather));

@@ -1,6 +1,11 @@
 const { env } = require("../config/env");
 const { AppError } = require("../utils/appError");
 
+const API_ENDPOINTS = Object.freeze({
+  FORECAST: "forecast",
+  HISTORY: "history",
+});
+
 function parseIsoDate(dateText) {
   return new Date(`${dateText}T00:00:00Z`);
 }
@@ -46,6 +51,58 @@ function resolveForecastDays(dateRange) {
   return days;
 }
 
+function resolveHistoryDateRange(dateRange) {
+  const startDate = String(dateRange?.startDate || "");
+  const endDate = String(dateRange?.endDate || "");
+  const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!isoDatePattern.test(startDate) || !isoDatePattern.test(endDate)) {
+    throw new AppError(
+      "History date range must use YYYY-MM-DD format.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new AppError(
+      "History date range contains an invalid date.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const minSupportedDate = parseIsoDate("2010-01-01");
+  if (start < minSupportedDate || end < minSupportedDate) {
+    throw new AppError(
+      "History date range must be on or after 2010-01-01.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const today = startOfTodayUtc();
+  if (start > today || end > today) {
+    throw new AppError(
+      "History date range must not be later than today.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  if (start > end) {
+    throw new AppError(
+      "History date range start must be before or equal to end.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  return { startDate, endDate };
+}
+
 function buildFeelsLikeExplanation(current) {
   const temp = current.temp_c;
   const feelsLike = current.feelslike_c;
@@ -86,46 +143,23 @@ function normalizeAlerts(alertsPayload) {
   }));
 }
 
-function normalizeHourlyForecast(forecastDays, dateRange) {
-  const hours = forecastDays.flatMap((day) => day.hour || []);
-
-  const filtered = dateRange
-    ? hours.filter((hour) => {
-        const datePart = String(hour.time || "").split(" ")[0];
+function normalizeForecast(forecastDays, dateRange) {
+  const days = dateRange
+    ? forecastDays.filter((day) => {
+        const datePart = String(day.date || "");
         return datePart >= dateRange.startDate && datePart <= dateRange.endDate;
       })
-    : hours.slice(0, 24);
+    : forecastDays;
 
-  return filtered.map((hour) => ({
-    time: hour.time,
-    temperatureC: hour.temp_c,
-    feelsLikeC: hour.feelslike_c,
-    condition: {
-      text: hour.condition?.text || null,
-      icon: hour.condition?.icon || null,
-    },
-    humidity: hour.humidity,
-    windSpeedKph: hour.wind_kph,
-    windDirection: hour.wind_dir,
-    chanceOfRainPct: hour.chance_of_rain,
-    chanceOfSnowPct: hour.chance_of_snow,
-    precipitationMm: hour.precip_mm,
-    uvIndex: hour.uv,
-  }));
-}
-
-function computePrecipitationProbability(hourlyForecast) {
-  if (!hourlyForecast.length) {
-    return null;
-  }
-
-  return hourlyForecast.reduce((max, hour) => {
-    const chance = Math.max(
-      Number(hour.chanceOfRainPct || 0),
-      Number(hour.chanceOfSnowPct || 0),
-    );
-    return chance > max ? chance : max;
-  }, 0);
+  return {
+    forecastday: days.map((day) => ({
+      day: day?.date,
+      avgtemp_c: day?.day?.avgtemp_c ?? null,
+      daily_rain_probability_pct:
+        day?.day?.daily_chance_of_rain ??
+        (day?.day?.daily_will_it_rain ? 100 : 0),
+    })),
+  };
 }
 
 async function fetchJson(url, options = {}) {
@@ -168,16 +202,26 @@ async function fetchWeatherFromProvider(api, location, dateRange = null) {
       "MISSING_WEATHER_API_KEY",
     );
   }
-
-  const days = resolveForecastDays(dateRange);
-
-  const params = new URLSearchParams({
+  let paramObj = {
     key: env.WEATHER_API_KEY,
     q: location,
-    days: String(days),
     aqi: "yes",
     alerts: "yes",
-  });
+  };
+
+  if (api === API_ENDPOINTS.FORECAST) {
+    const days = resolveForecastDays(dateRange);
+    paramObj = { ...paramObj, days: String(days) };
+  } else if (api === API_ENDPOINTS.HISTORY) {
+    const historyDateRange = resolveHistoryDateRange(dateRange);
+    paramObj = {
+      ...paramObj,
+      dt: historyDateRange.startDate,
+      end_dt: historyDateRange.endDate,
+    };
+  }
+
+  const params = new URLSearchParams(paramObj);
 
   const url = `${env.WEATHER_API_BASE_URL}/${api}.json?${params.toString()}`;
   const { response, body } = await fetchJson(url);
@@ -204,29 +248,14 @@ async function fetchWeatherFromProvider(api, location, dateRange = null) {
   return body;
 }
 
-function transformWeatherResponse(providerData, dateRange = null) {
-  const location = providerData.location;
+function transformCurrentWeatherResponse(providerData) {
   const current = providerData.current;
   const today = providerData.forecast?.forecastday?.[0] || {};
   const todayDay = today.day || {};
   const astro = today.astro || {};
-  const forecastDays = providerData.forecast?.forecastday || [];
-
-  const hourlyForecast = normalizeHourlyForecast(forecastDays, dateRange);
   const alerts = normalizeAlerts(providerData.alerts);
-  const precipitationProbabilityPct =
-    computePrecipitationProbability(hourlyForecast);
 
   return {
-    location: {
-      name: location?.name || null,
-      region: location?.region || null,
-      country: location?.country || null,
-      latitude: location?.lat ?? null,
-      longitude: location?.lon ?? null,
-      timezone: location?.tz_id || null,
-      localTime: location?.localtime || null,
-    },
     current: {
       temperatureC: current?.temp_c ?? null,
       feelsLikeC: current?.feelslike_c ?? null,
@@ -257,17 +286,18 @@ function transformWeatherResponse(providerData, dateRange = null) {
       sunrise: astro.sunrise || null,
       sunset: astro.sunset || null,
     },
-    hourlyForecast,
-    precipitationProbabilityPct,
     weatherAlerts: alerts,
-    meta: {
-      dateRange: dateRange || null,
-      source: "weatherapi.com",
-    },
   };
+}
+
+function transformDailyWeatherResponse(providerData, dateRange) {
+  const forecastDays = providerData.forecast?.forecastday || [];
+  return normalizeForecast(forecastDays, dateRange);
 }
 
 module.exports = {
   fetchWeatherFromProvider,
-  transformWeatherResponse,
+  transformCurrentWeatherResponse,
+  transformDailyWeatherResponse,
+  API_ENDPOINTS,
 };
