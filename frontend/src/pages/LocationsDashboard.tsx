@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { MapPin, CalendarDays, Clock3, FileSpreadsheet, FileJson, Loader2, Trash2 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { MapPin, CalendarDays, Clock3, FileSpreadsheet, FileJson, Loader2, Trash2, Navigation } from "lucide-react";
 import {
   fetchLocationDashboardData,
   downloadDailyForecastExport,
@@ -68,21 +68,30 @@ type DownloadState = {
 } | null;
 
 type DeleteState = string | null;
+type SelectState = string | null;
+
+const LOCATION_STORAGE_KEY = "weatherapp:selected-location";
+const DRAFT_RANGE_STORAGE_KEY = "weatherapp:date-range-draft";
+const APPLIED_RANGE_STORAGE_KEY = "weatherapp:date-range-applied";
 
 const ExportIcons = ({
   item,
   rowKey,
   downloadState,
   deleteState,
+  selectState,
   onDownload,
   onDelete,
+  onSelect,
 }: {
   item: LocationDashboardItem;
   rowKey: string;
   downloadState: DownloadState;
   deleteState: DeleteState;
+  selectState: SelectState;
   onDownload: (item: LocationDashboardItem, format: DailyExportFormat, rowKey: string) => void;
   onDelete: (item: LocationDashboardItem, rowKey: string) => void;
+  onSelect: (item: LocationDashboardItem, rowKey: string) => void;
 }) => {
   const canExport = canExportItem(item);
   const isCsvLoading =
@@ -90,11 +99,28 @@ const ExportIcons = ({
   const isJsonLoading =
     downloadState?.key === rowKey && downloadState?.format === "json";
   const isDeleteLoading = deleteState === rowKey;
+  const isSelectLoading = selectState === rowKey;
+  const canSelect = item.latitude !== null && item.longitude !== null;
   const canDelete = Number.isInteger(item.id);
-  const isAnyLoading = Boolean(downloadState) || Boolean(deleteState);
+  const isAnyLoading =
+    Boolean(downloadState) || Boolean(deleteState) || Boolean(selectState);
 
   return (
     <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onSelect(item, rowKey)}
+        disabled={!canSelect || isAnyLoading}
+        title="Use this location"
+        aria-label="Use this location"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+      >
+        {isSelectLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Navigation className="h-4 w-4" />
+        )}
+      </button>
       <button
         type="button"
         onClick={() => onDownload(item, "csv", rowKey)}
@@ -146,15 +172,19 @@ const MobileLocationCard = ({
   index,
   downloadState,
   deleteState,
+  selectState,
   onDownload,
   onDelete,
+  onSelect,
 }: {
   item: LocationDashboardItem;
   index: number;
   downloadState: DownloadState;
   deleteState: DeleteState;
+  selectState: SelectState;
   onDownload: (item: LocationDashboardItem, format: DailyExportFormat, rowKey: string) => void;
   onDelete: (item: LocationDashboardItem, rowKey: string) => void;
+  onSelect: (item: LocationDashboardItem, rowKey: string) => void;
 }) => {
   const rowKey = String(item.id ?? `${item.location}-${index}`);
 
@@ -172,8 +202,10 @@ const MobileLocationCard = ({
         rowKey={rowKey}
         downloadState={downloadState}
         deleteState={deleteState}
+        selectState={selectState}
         onDownload={onDownload}
         onDelete={onDelete}
+        onSelect={onSelect}
       />
     </div>
 
@@ -208,8 +240,10 @@ const MobileLocationCard = ({
 };
 
 const LocationsDashboard = () => {
+  const navigate = useNavigate();
   const [downloadState, setDownloadState] = useState<DownloadState>(null);
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
+  const [selectState, setSelectState] = useState<SelectState>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -228,7 +262,7 @@ const LocationsDashboard = () => {
     format: DailyExportFormat,
     rowKey: string,
   ) => {
-    if (!canExportItem(item) || downloadState || deleteState) {
+    if (!canExportItem(item) || downloadState || deleteState || selectState) {
       return;
     }
 
@@ -258,7 +292,7 @@ const LocationsDashboard = () => {
   };
 
   const handleDelete = async (item: LocationDashboardItem, rowKey: string) => {
-    if (!Number.isInteger(item.id) || downloadState || deleteState) {
+    if (!Number.isInteger(item.id) || downloadState || deleteState || selectState) {
       return;
     }
 
@@ -275,6 +309,51 @@ const LocationsDashboard = () => {
       );
     } finally {
       setDeleteState(null);
+    }
+  };
+
+  const handleSelect = async (item: LocationDashboardItem, rowKey: string) => {
+    if (
+      item.latitude === null ||
+      item.longitude === null ||
+      downloadState ||
+      deleteState ||
+      selectState
+    ) {
+      return;
+    }
+
+    setActionError(null);
+    setSelectState(rowKey);
+    try {
+      window.localStorage.setItem(
+        LOCATION_STORAGE_KEY,
+        JSON.stringify({
+          lat: item.latitude,
+          lon: item.longitude,
+          displayLocation:
+            item.location || `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`,
+        }),
+      );
+
+      if (item.startDate && item.endDate) {
+        const range = JSON.stringify({
+          start: item.startDate,
+          end: item.endDate,
+        });
+        window.localStorage.setItem(DRAFT_RANGE_STORAGE_KEY, range);
+        window.localStorage.setItem(APPLIED_RANGE_STORAGE_KEY, range);
+      }
+
+      navigate("/");
+    } catch (selectIssue) {
+      setActionError(
+        selectIssue instanceof Error
+          ? selectIssue.message
+          : "Unable to select this location.",
+      );
+    } finally {
+      setSelectState(null);
     }
   };
 
@@ -337,8 +416,10 @@ const LocationsDashboard = () => {
                   index={index}
                   downloadState={downloadState}
                   deleteState={deleteState}
+                  selectState={selectState}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
+                  onSelect={handleSelect}
                 />
               ))}
             </section>
@@ -355,7 +436,7 @@ const LocationsDashboard = () => {
                       <th className="px-4 py-3 font-semibold">End Date</th>
                       <th className="px-4 py-3 font-semibold">Created</th>
                       <th className="px-4 py-3 font-semibold">Updated</th>
-                      <th className="px-4 py-3 font-semibold text-right">Export</th>
+                      <th className="px-4 py-3 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,8 +473,10 @@ const LocationsDashboard = () => {
                                 rowKey={rowKey}
                                 downloadState={downloadState}
                                 deleteState={deleteState}
+                                selectState={selectState}
                                 onDownload={handleDownload}
                                 onDelete={handleDelete}
+                                onSelect={handleSelect}
                               />
                             </div>
                           </td>
