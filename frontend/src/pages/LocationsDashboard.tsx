@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { MapPin, CalendarDays, Clock3, FileSpreadsheet, FileJson, Loader2 } from "lucide-react";
+import { MapPin, CalendarDays, Clock3, FileSpreadsheet, FileJson, Loader2, Trash2 } from "lucide-react";
 import {
   fetchLocationDashboardData,
   downloadDailyForecastExport,
+  deleteWeatherRecordById,
   type DailyExportFormat,
   type LocationDashboardItem,
 } from "@/services/weatherApi";
@@ -66,23 +67,31 @@ type DownloadState = {
   format: DailyExportFormat;
 } | null;
 
+type DeleteState = string | null;
+
 const ExportIcons = ({
   item,
   rowKey,
   downloadState,
+  deleteState,
   onDownload,
+  onDelete,
 }: {
   item: LocationDashboardItem;
   rowKey: string;
   downloadState: DownloadState;
+  deleteState: DeleteState;
   onDownload: (item: LocationDashboardItem, format: DailyExportFormat, rowKey: string) => void;
+  onDelete: (item: LocationDashboardItem, rowKey: string) => void;
 }) => {
   const canExport = canExportItem(item);
   const isCsvLoading =
     downloadState?.key === rowKey && downloadState?.format === "csv";
   const isJsonLoading =
     downloadState?.key === rowKey && downloadState?.format === "json";
-  const isAnyLoading = Boolean(downloadState);
+  const isDeleteLoading = deleteState === rowKey;
+  const canDelete = Number.isInteger(item.id);
+  const isAnyLoading = Boolean(downloadState) || Boolean(deleteState);
 
   return (
     <div className="flex items-center gap-1.5">
@@ -114,6 +123,20 @@ const ExportIcons = ({
           <FileJson className="h-4 w-4" />
         )}
       </button>
+      <button
+        type="button"
+        onClick={() => onDelete(item, rowKey)}
+        disabled={!canDelete || isAnyLoading}
+        title="Delete record"
+        aria-label="Delete record"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+      >
+        {isDeleteLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
     </div>
   );
 };
@@ -122,14 +145,18 @@ const MobileLocationCard = ({
   item,
   index,
   downloadState,
+  deleteState,
   onDownload,
+  onDelete,
 }: {
   item: LocationDashboardItem;
   index: number;
   downloadState: DownloadState;
+  deleteState: DeleteState;
   onDownload: (item: LocationDashboardItem, format: DailyExportFormat, rowKey: string) => void;
+  onDelete: (item: LocationDashboardItem, rowKey: string) => void;
 }) => {
-  const rowKey = `${item.location}-${item.latitude}-${item.longitude}-${item.startDate}-${item.endDate}-${index}`;
+  const rowKey = String(item.id ?? `${item.location}-${index}`);
 
   return (
   <article className="weather-card">
@@ -144,7 +171,9 @@ const MobileLocationCard = ({
         item={item}
         rowKey={rowKey}
         downloadState={downloadState}
+        deleteState={deleteState}
         onDownload={onDownload}
+        onDelete={onDelete}
       />
     </div>
 
@@ -180,9 +209,10 @@ const MobileLocationCard = ({
 
 const LocationsDashboard = () => {
   const [downloadState, setDownloadState] = useState<DownloadState>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [deleteState, setDeleteState] = useState<DeleteState>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["weather-location-dashboard"],
     queryFn: fetchLocationDashboardData,
     retry: 1,
@@ -198,11 +228,11 @@ const LocationsDashboard = () => {
     format: DailyExportFormat,
     rowKey: string,
   ) => {
-    if (!canExportItem(item) || downloadState) {
+    if (!canExportItem(item) || downloadState || deleteState) {
       return;
     }
 
-    setDownloadError(null);
+    setActionError(null);
     setDownloadState({ key: rowKey, format });
     try {
       await downloadDailyForecastExport({
@@ -217,13 +247,34 @@ const LocationsDashboard = () => {
         format,
       });
     } catch (downloadIssue) {
-      setDownloadError(
+      setActionError(
         downloadIssue instanceof Error
           ? downloadIssue.message
           : "Unable to download export file.",
       );
     } finally {
       setDownloadState(null);
+    }
+  };
+
+  const handleDelete = async (item: LocationDashboardItem, rowKey: string) => {
+    if (!Number.isInteger(item.id) || downloadState || deleteState) {
+      return;
+    }
+
+    setActionError(null);
+    setDeleteState(rowKey);
+    try {
+      await deleteWeatherRecordById(item.id as number);
+      await refetch();
+    } catch (deleteIssue) {
+      setActionError(
+        deleteIssue instanceof Error
+          ? deleteIssue.message
+          : "Unable to delete record.",
+      );
+    } finally {
+      setDeleteState(null);
     }
   };
 
@@ -285,7 +336,9 @@ const LocationsDashboard = () => {
                   item={item}
                   index={index}
                   downloadState={downloadState}
+                  deleteState={deleteState}
                   onDownload={handleDownload}
+                  onDelete={handleDelete}
                 />
               ))}
             </section>
@@ -307,7 +360,7 @@ const LocationsDashboard = () => {
                   </thead>
                   <tbody>
                     {rows.map((item, index) => {
-                      const rowKey = `${item.location}-${item.latitude}-${item.longitude}-${item.startDate}-${item.endDate}-${index}`;
+                      const rowKey = String(item.id ?? `${item.location}-${index}`);
 
                       return (
                         <tr key={rowKey} className="border-t border-border/60">
@@ -338,7 +391,9 @@ const LocationsDashboard = () => {
                                 item={item}
                                 rowKey={rowKey}
                                 downloadState={downloadState}
+                                deleteState={deleteState}
                                 onDownload={handleDownload}
+                                onDelete={handleDelete}
                               />
                             </div>
                           </td>
@@ -352,9 +407,9 @@ const LocationsDashboard = () => {
           </>
         )}
 
-        {downloadError && (
+        {actionError && (
           <section className="weather-card border border-destructive/30 bg-destructive/5">
-            <p className="text-xs text-destructive">{downloadError}</p>
+            <p className="text-xs text-destructive">{actionError}</p>
           </section>
         )}
 

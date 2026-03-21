@@ -53,6 +53,7 @@ interface BackendErrorResponse {
 }
 
 interface BackendWeatherHistoryRecord {
+  id?: number;
   location?: string;
   latitude?: number;
   longitude?: number;
@@ -72,6 +73,7 @@ export interface DailyDateRangeInput {
 export type DailyExportFormat = "csv" | "json";
 
 export interface LocationDashboardItem {
+  id: number | null;
   location: string;
   latitude: number | null;
   longitude: number | null;
@@ -312,6 +314,8 @@ export async function fetchLocationDashboardData(): Promise<
 
   const payload = (await response.json()) as BackendWeatherHistoryRecord[];
   return payload.map((item) => ({
+    id:
+      typeof item.id === "number" && Number.isInteger(item.id) ? item.id : null,
     location: (item.location || "").trim(),
     latitude:
       typeof item.latitude === "number" && Number.isFinite(item.latitude)
@@ -370,4 +374,15 @@ export async function downloadDailyForecastExport(params: {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function deleteWeatherRecordById(id: number): Promise<void> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/weather/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
 }
