@@ -38,7 +38,7 @@ services:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: WeatherDb
-    command: sh -lc "npm ci && node --inspect=0.0.0.0:9229 --watch index.js"
+    command: sh -lc "npm ci && npm run dev"
 
   db:
     image: postgres:17

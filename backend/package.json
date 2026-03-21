@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "nodemon -L --watch src --watch index.js --ext js,json --exec \"node --inspect=0.0.0.0:9229 index.js\""
   },
   "keywords": [
     "weather",
@@ -19,6 +19,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
+    "nodemon": "^3.1.7",
     "pg": "^8.20.0"
   }
 }
