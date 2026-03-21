@@ -52,9 +52,31 @@ interface BackendErrorResponse {
   };
 }
 
+interface BackendWeatherHistoryRecord {
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  dateRange?: {
+    start?: string;
+    end?: string;
+  } | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface DailyDateRangeInput {
   start: string;
   end: string;
+}
+
+export interface LocationDashboardItem {
+  location: string;
+  latitude: number | null;
+  longitude: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
@@ -169,6 +191,7 @@ async function fetchDailyWeatherForLocation(
   lat: number,
   lon: number,
   dateRange: DailyDateRangeInput,
+  displayLocation: string,
 ): Promise<BackendDailyWeatherResponse> {
   const apiBaseUrl = getApiBaseUrl();
   const response = await fetch(
@@ -179,6 +202,7 @@ async function fetchDailyWeatherForLocation(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        displayLocation,
         dateRange: {
           start: dateRange.start,
           end: dateRange.end,
@@ -198,6 +222,7 @@ export async function fetchWeatherForLocation(
   lat: number,
   lon: number,
   dateRange: DailyDateRangeInput,
+  displayLocation: string,
 ): Promise<WeatherDashboardData> {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     throw new Error("Latitude/longitude must be valid decimal numbers.");
@@ -211,7 +236,7 @@ export async function fetchWeatherForLocation(
 
   const [currentPayload, dailyPayload] = await Promise.all([
     fetchCurrentWeatherForLocation(lat, lon),
-    fetchDailyWeatherForLocation(lat, lon, dateRange),
+    fetchDailyWeatherForLocation(lat, lon, dateRange, displayLocation),
   ]);
 
   const usEpaIndex = Number(currentPayload.current?.airQuality?.usEpaIndex || 0);
@@ -262,4 +287,32 @@ export async function fetchWeatherForLocation(
     sunset: currentPayload.today?.sunset || "-",
     alert: mapAlerts(currentPayload),
   };
+}
+
+export async function fetchLocationDashboardData(): Promise<
+  LocationDashboardItem[]
+> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/weather/history`);
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as BackendWeatherHistoryRecord[];
+  return payload.map((item) => ({
+    location: (item.location || "").trim(),
+    latitude:
+      typeof item.latitude === "number" && Number.isFinite(item.latitude)
+        ? item.latitude
+        : null,
+    longitude:
+      typeof item.longitude === "number" && Number.isFinite(item.longitude)
+        ? item.longitude
+        : null,
+    startDate: item.dateRange?.start || null,
+    endDate: item.dateRange?.end || null,
+    createdAt: item.createdAt || null,
+    updatedAt: item.updatedAt || null,
+  }));
 }

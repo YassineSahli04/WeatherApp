@@ -178,6 +178,22 @@ async function updateWeatherDataforLocation(id, weatherData) {
   return mapRecord(result.rows[0]);
 }
 
+async function updateWeatherLocation(id, location) {
+  const result = await pool.query(
+    `
+      UPDATE weather_queries
+      SET
+        location = $2,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [id, location],
+  );
+
+  return mapRecord(result.rows[0]);
+}
+
 async function updateWeatherRecord(
   id,
   { location, latitude, longitude, dateRange, weatherData },
@@ -223,6 +239,7 @@ module.exports = {
   getStoredDailyWeatherData,
   getWeatherRecordById,
   updateWeatherDataforLocation,
+  updateWeatherLocation,
   getWeatherHistory,
   updateWeatherRecord,
   deleteWeatherRecord,

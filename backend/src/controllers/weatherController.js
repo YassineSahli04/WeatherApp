@@ -27,6 +27,7 @@ const {
   doRowNeedsUpdate,
   getStoredDailyWeatherData,
   updateWeatherDataforLocation,
+  updateWeatherLocation,
 } = require("../services/weatherStorageService");
 
 async function buildWeatherPayload(
@@ -98,13 +99,22 @@ async function getCurrentWeatherConditions(req, res) {
 
 async function getOrCreateDailyWeather(req, res) {
   const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
-  const location = `${lat},${lon}`;
+  const apiLocation = `${lat},${lon}`;
+  const displayLocation =
+    typeof req.body?.displayLocation === "string"
+      ? req.body.displayLocation.trim()
+      : "";
+  const location = displayLocation || apiLocation;
   const dateRange = normalizeDateRange(req.body.dateRange);
 
   const availability = await isWeatherDataAvailable(lat, lon);
   let weather;
 
   if (availability.exists) {
+    if (displayLocation) {
+      await updateWeatherLocation(availability.id, location);
+    }
+
     const needsUpdateResult = await doRowNeedsUpdate(
       availability.id,
       dateRange.startDate,
@@ -116,7 +126,7 @@ async function getOrCreateDailyWeather(req, res) {
         : Boolean(needsUpdateResult);
 
     if (needsUpdate) {
-      weather = await buildMergedDailyForecastPayload(location, dateRange);
+      weather = await buildMergedDailyForecastPayload(apiLocation, dateRange);
       await updateWeatherDataforLocation(availability.id, weather);
     } else {
       weather = {
@@ -124,7 +134,7 @@ async function getOrCreateDailyWeather(req, res) {
       };
     }
   } else {
-    weather = await buildMergedDailyForecastPayload(location, dateRange);
+    weather = await buildMergedDailyForecastPayload(apiLocation, dateRange);
     await createWeatherRecord({
       location,
       latitude: lat,

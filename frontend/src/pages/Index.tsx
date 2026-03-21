@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import SearchHeader from "@/components/weather/SearchHeader";
 import WeatherHero from "@/components/weather/WeatherHero";
 import KeyMetrics from "@/components/weather/KeyMetrics";
@@ -96,12 +97,14 @@ const Index = () => {
       queryCoordinates.lon,
       appliedDateRange.start,
       appliedDateRange.end,
+      displayLocation,
     ],
     queryFn: () =>
       fetchWeatherForLocation(
         queryCoordinates.lat,
         queryCoordinates.lon,
         appliedDateRange,
+        displayLocation,
       ),
     enabled:
       Number.isFinite(queryCoordinates.lat) &&
@@ -123,6 +126,14 @@ const Index = () => {
           setDisplayLocation(nextDisplayLocation);
         }}
       />
+      <div className="container mx-auto px-4 pt-3 pb-1 max-w-4xl">
+        <Link
+          to="/locations"
+          className="inline-flex h-9 items-center justify-center rounded-xl bg-secondary px-3 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
+        >
+          Open Saved Locations Dashboard
+        </Link>
+      </div>
 
       {isAwaitingResponse && <LoadingPlaceholder />}
 
