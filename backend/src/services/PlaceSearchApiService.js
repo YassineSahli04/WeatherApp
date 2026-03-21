@@ -22,18 +22,29 @@ async function getCurrentLocationFamousPlaces(apiLocation) {
     ll: apiLocation,
     radius: "5000",
     sort: "RELEVANCE",
-    limit: "8",
+    limit: "5",
   });
 
   const url = `${env.FSQ_API_BASE_URL}/places/search?${params.toString()}`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: env.FSQ_API_KEY,
-      "X-Places-Api-Version": PLACES_API_VERSION,
-      accept: "application/json",
-    },
-  });
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${env.FSQ_API_KEY}`,
+        "X-Places-Api-Version": PLACES_API_VERSION,
+        accept: "application/json",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch {
+    throw new AppError(
+      "Unable to reach places provider.",
+      502,
+      "PLACES_API_NETWORK_ERROR",
+    );
+  }
 
   const payload = await response.json().catch(() => null);
 
@@ -43,11 +54,7 @@ async function getCurrentLocationFamousPlaces(apiLocation) {
       payload?.errors?.[0]?.message ||
       "Unable to fetch relevant places.";
 
-    throw new AppError(
-      errorMessage,
-      500,
-      "PLACES_API_ERROR",
-    );
+    throw new AppError(errorMessage, 500, "PLACES_API_ERROR");
   }
 
   return normalizePlacesResults(payload?.results || []);
