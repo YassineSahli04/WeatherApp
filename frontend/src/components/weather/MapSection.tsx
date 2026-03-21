@@ -4,6 +4,7 @@ import Map, {
   Marker,
   NavigationControl,
   FullscreenControl,
+  type MapRef,
 } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -17,11 +18,59 @@ const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
 const MapSection: React.FC<MapSectionProps> = ({ location, lat, lng }) => {
   const [hasToken, setHasToken] = useState<boolean>(!!TOKEN && TOKEN !== "your_mapbox_token_here");
+  const mapRef = React.useRef<MapRef | null>(null);
   const [viewState, setViewState] = useState({
     longitude: lng,
     latitude: lat,
-    zoom: 11
+    zoom: 13.5,
+    pitch: 60,
+    bearing: -18,
   });
+
+  const applyTouristic3d = React.useCallback(() => {
+    const map = mapRef.current?.getMap() as any;
+    if (!map) {
+      return;
+    }
+
+    if (!map.getSource("mapbox-dem")) {
+      map.addSource("mapbox-dem", {
+        type: "raster-dem",
+        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+        tileSize: 512,
+        maxzoom: 14,
+      });
+    }
+
+    map.setTerrain({
+      source: "mapbox-dem",
+      exaggeration: 1.2,
+    });
+
+    if (!map.getLayer("3d-buildings")) {
+      const labelLayerId = map
+        .getStyle()
+        ?.layers?.find((layer: any) => layer.type === "symbol" && layer.layout?.["text-field"])?.id;
+
+      map.addLayer(
+        {
+          id: "3d-buildings",
+          source: "composite",
+          "source-layer": "building",
+          filter: ["==", "extrude", "true"],
+          type: "fill-extrusion",
+          minzoom: 14,
+          paint: {
+            "fill-extrusion-color": "#d6e6ff",
+            "fill-extrusion-height": ["get", "height"],
+            "fill-extrusion-base": ["get", "min_height"],
+            "fill-extrusion-opacity": 0.72,
+          },
+        },
+        labelLayerId,
+      );
+    }
+  }, []);
 
   // Update view state when lat/lng props change
   useEffect(() => {
@@ -29,6 +78,8 @@ const MapSection: React.FC<MapSectionProps> = ({ location, lat, lng }) => {
       ...prev,
       longitude: lng,
       latitude: lat,
+      zoom: Math.max(prev.zoom, 13),
+      pitch: 60,
     }));
   }, [lat, lng]);
 
@@ -40,11 +91,14 @@ const MapSection: React.FC<MapSectionProps> = ({ location, lat, lng }) => {
         
         {hasToken ? (
           <Map
+            ref={mapRef}
             {...viewState}
             onMove={evt => setViewState(evt.viewState)}
-            mapStyle="mapbox://styles/mapbox/navigation-night-v1"
+            mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
             mapboxAccessToken={TOKEN}
             style={{ width: "100%", height: "100%" }}
+            onLoad={applyTouristic3d}
+            onStyleData={applyTouristic3d}
           >
             <FullscreenControl position="top-right" />
             <NavigationControl position="bottom-right" showCompass={false} />
