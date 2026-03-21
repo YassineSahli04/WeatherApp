@@ -16,13 +16,6 @@ function formatIsoDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-function daysBetweenInclusive(startDateText, endDateText) {
-  const start = parseIsoDate(startDateText);
-  const end = parseIsoDate(endDateText);
-  const diffMs = end.getTime() - start.getTime();
-  return Math.floor(diffMs / 86400000) + 1;
-}
-
 function minusDaysUtc(date, days) {
   return new Date(date.getTime() - days * 86400000);
 }
@@ -35,7 +28,6 @@ module.exports = {
   parseIsoDate,
   startOfTodayUtc,
   formatIsoDate,
-  daysBetweenInclusive,
   minusDaysUtc,
   addDaysUtc,
 };

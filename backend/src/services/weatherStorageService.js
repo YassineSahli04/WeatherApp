@@ -163,6 +163,57 @@ async function getWeatherHistory() {
 }
 
 async function updateWeatherDataforLocation(id, weatherData, dateRange) {
+  const query = `
+    SELECT weather_data, start_date, end_date
+    FROM weather_queries
+    WHERE id = $1
+    LIMIT 1
+  `;
+
+  const res = await pool.query(query, [id]);
+
+  const newStart = dateRange.startDate;
+  const newEnd = dateRange.endDate;
+
+  let nextWeatherData = weatherData;
+  let nextStartDate = newStart;
+  let nextEndDate = newEnd;
+
+  if (res.rows.length === 1) {
+    const row = res.rows[0];
+    const rowStDate = new Date(row.start_date).toISOString().slice(0, 10);
+    const rowEndDate = new Date(row.end_date).toISOString().slice(0, 10);
+
+    const isLeftOverlap = newStart < rowStDate;
+    const isRightOverlap = newEnd > rowEndDate;
+
+    if (isLeftOverlap || isRightOverlap) {
+      const oldDays = row.weather_data?.forecast?.forecastday || [];
+      const newDays = weatherData?.forecast?.forecastday || [];
+      const byDay = new Map();
+
+      for (const day of oldDays) {
+        byDay.set(String(day?.day || ""), day);
+      }
+
+      for (const day of newDays) {
+        byDay.set(String(day?.day || ""), day);
+      }
+
+      const mergedDays = Array.from(byDay.values()).sort((a, b) =>
+        String(a?.day || "").localeCompare(String(b?.day || "")),
+      );
+
+      nextWeatherData = {
+        forecast: {
+          forecastday: mergedDays,
+        },
+      };
+      nextStartDate = isLeftOverlap ? newStart : rowStDate;
+      nextEndDate = isRightOverlap ? newEnd : rowEndDate;
+    }
+  }
+
   const result = await pool.query(
     `
       UPDATE weather_queries
@@ -174,7 +225,7 @@ async function updateWeatherDataforLocation(id, weatherData, dateRange) {
       WHERE id = $1
       RETURNING *
     `,
-    [id, JSON.stringify(weatherData), dateRange.startDate, dateRange.endDate],
+    [id, JSON.stringify(nextWeatherData), nextStartDate, nextEndDate],
   );
 
   return mapRecord(result.rows[0]);

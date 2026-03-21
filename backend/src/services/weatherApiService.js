@@ -1,10 +1,6 @@
 const { env } = require("../config/env");
 const { AppError } = require("../utils/appError");
-const {
-  parseIsoDate,
-  startOfTodayUtc,
-  daysBetweenInclusive,
-} = require("../utils/dateUtils");
+const { parseIsoDate, startOfTodayUtc } = require("../utils/dateUtils");
 
 const API_ENDPOINTS = Object.freeze({
   FORECAST: "forecast",
@@ -18,6 +14,7 @@ function resolveForecastDays(dateRange) {
 
   const today = startOfTodayUtc();
   const startDate = parseIsoDate(dateRange.startDate);
+  const endDate = parseIsoDate(dateRange.endDate);
   if (startDate < today) {
     throw new AppError(
       "Date range must start today or in the future for forecast requests.",
@@ -26,7 +23,9 @@ function resolveForecastDays(dateRange) {
     );
   }
 
-  const days = daysBetweenInclusive(dateRange.startDate, dateRange.endDate);
+  const diffMs = endDate.getTime() - today.getTime();
+  const days = Math.floor(diffMs / 86400000) + 1;
+
   if (days < 1 || days > env.WEATHER_FORECAST_MAX_DAYS) {
     throw new AppError(
       `Date range exceeds the supported forecast window (1-${env.WEATHER_FORECAST_MAX_DAYS} days).`,

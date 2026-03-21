@@ -97,7 +97,12 @@ async function getCurrentWeatherConditions(req, res) {
   res.status(200).json(weather);
 }
 
-async function resolveDailyWeatherForLocation({ lat, lon, dateRange, location }) {
+async function resolveDailyWeatherForLocation({
+  lat,
+  lon,
+  dateRange,
+  location,
+}) {
   const apiLocation = `${lat},${lon}`;
 
   const availability = await isWeatherDataAvailable(lat, lon);
@@ -237,7 +242,10 @@ async function exportDailyWeather(req, res) {
     { header: "end_date", value: "end_date" },
     { header: "day", value: "day" },
     { header: "avgtemp_c", value: "avgtemp_c" },
-    { header: "daily_rain_probability_pct", value: "daily_rain_probability_pct" },
+    {
+      header: "daily_rain_probability_pct",
+      value: "daily_rain_probability_pct",
+    },
   ]);
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
