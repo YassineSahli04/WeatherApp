@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const weatherRoutes = require("./routes/weatherRoutes");
+const placeSearchRoutes = require("./routes/placeSearchRoutes");
 const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -25,6 +26,7 @@ app.get("/health", (req, res) => {
 });
 
 app.use("/weather", weatherRoutes);
+app.use("/places", placeSearchRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
