@@ -69,6 +69,8 @@ export interface DailyDateRangeInput {
   end: string;
 }
 
+export type DailyExportFormat = "csv" | "json";
+
 export interface LocationDashboardItem {
   location: string;
   latitude: number | null;
@@ -169,6 +171,15 @@ async function parseErrorMessage(response: Response): Promise<string> {
     .json()
     .catch(() => null)) as BackendErrorResponse | null;
   return errorPayload?.error?.message || "Failed to fetch weather data.";
+}
+
+function getFilenameFromContentDisposition(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/filename="([^"]+)"/i);
+  return match?.[1] || null;
 }
 
 async function fetchCurrentWeatherForLocation(
@@ -315,4 +326,48 @@ export async function fetchLocationDashboardData(): Promise<
     createdAt: item.createdAt || null,
     updatedAt: item.updatedAt || null,
   }));
+}
+
+export async function downloadDailyForecastExport(params: {
+  lat: number;
+  lon: number;
+  dateRange: DailyDateRangeInput;
+  displayLocation: string;
+  format: DailyExportFormat;
+}): Promise<void> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBaseUrl}/weather/export/daily?lat=${encodeURIComponent(String(params.lat))}&lon=${encodeURIComponent(String(params.lon))}&format=${encodeURIComponent(params.format)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        displayLocation: params.displayLocation,
+        dateRange: {
+          start: params.dateRange.start,
+          end: params.dateRange.end,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("content-disposition");
+  const fallbackName = `daily-forecast.${params.format}`;
+  const filename = getFilenameFromContentDisposition(contentDisposition) || fallbackName;
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

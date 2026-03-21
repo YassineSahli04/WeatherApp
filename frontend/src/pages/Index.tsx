@@ -9,7 +9,9 @@ import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
 import { MOCK_COORDINATES, MOCK_LOCATION_LABEL } from "@/data/weatherData";
 import {
+  downloadDailyForecastExport,
   fetchWeatherForLocation,
+  type DailyExportFormat,
   type DailyDateRangeInput,
 } from "@/services/weatherApi";
 
@@ -90,6 +92,10 @@ const Index = () => {
   const [appliedDateRange, setAppliedDateRange] = useState<DailyDateRangeInput>(
     dateRangeDraft,
   );
+  const [downloadFormat, setDownloadFormat] = useState<DailyExportFormat | null>(
+    null,
+  );
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [
       "weather",
@@ -116,6 +122,30 @@ const Index = () => {
   const weatherData = data;
   const requestError = error instanceof Error ? error.message : null;
   const isAwaitingResponse = isLoading || isFetching;
+
+  const handleDownload = async (format: DailyExportFormat) => {
+    if (!weatherData || downloadFormat) {
+      return;
+    }
+
+    setDownloadError(null);
+    setDownloadFormat(format);
+    try {
+      await downloadDailyForecastExport({
+        lat: queryCoordinates.lat,
+        lon: queryCoordinates.lon,
+        dateRange: appliedDateRange,
+        displayLocation,
+        format,
+      });
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error ? error.message : "Unable to export forecast file.",
+      );
+    } finally {
+      setDownloadFormat(null);
+    }
+  };
 
   return (
     <div className="min-h-dvh bg-background overflow-x-hidden">
@@ -193,8 +223,33 @@ const Index = () => {
               onApplyDateRange={() => {
                 setAppliedDateRange(dateRangeDraft);
               }}
-              isLoading={isFetching}
+              isLoading={isFetching || Boolean(downloadFormat)}
             />
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => void handleDownload("csv")}
+                disabled={isFetching || Boolean(downloadFormat) || weatherData.daily.length === 0}
+                className="h-9 rounded-xl bg-secondary px-3 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+              >
+                {downloadFormat === "csv"
+                  ? "Preparing CSV..."
+                  : "Download Daily CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDownload("json")}
+                disabled={isFetching || Boolean(downloadFormat) || weatherData.daily.length === 0}
+                className="h-9 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              >
+                {downloadFormat === "json"
+                  ? "Preparing JSON..."
+                  : "Download Daily JSON"}
+              </button>
+            </div>
+            {downloadError && (
+              <p className="mt-2 text-xs text-destructive">{downloadError}</p>
+            )}
           </section>
 
 

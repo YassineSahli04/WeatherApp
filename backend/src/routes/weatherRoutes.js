@@ -5,6 +5,7 @@ const {
   getOrCreateDailyWeather,
   createWeather,
   getWeatherHistoryController,
+  exportDailyWeather,
   updateWeather,
   deleteWeather,
   exportWeather,
@@ -14,6 +15,7 @@ const router = express.Router();
 
 router.get("/", asyncHandler(getCurrentWeatherConditions));
 router.post("/", asyncHandler(getOrCreateDailyWeather));
+router.post("/export/daily", asyncHandler(exportDailyWeather));
 router.get("/history", asyncHandler(getWeatherHistoryController));
 router.get("/export", asyncHandler(exportWeather));
 router.put("/:id", asyncHandler(updateWeather));

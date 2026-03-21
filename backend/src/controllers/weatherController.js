@@ -97,21 +97,14 @@ async function getCurrentWeatherConditions(req, res) {
   res.status(200).json(weather);
 }
 
-async function getOrCreateDailyWeather(req, res) {
-  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+async function resolveDailyWeatherForLocation({ lat, lon, dateRange, location }) {
   const apiLocation = `${lat},${lon}`;
-  const displayLocation =
-    typeof req.body?.displayLocation === "string"
-      ? req.body.displayLocation.trim()
-      : "";
-  const location = displayLocation || apiLocation;
-  const dateRange = normalizeDateRange(req.body.dateRange);
 
   const availability = await isWeatherDataAvailable(lat, lon);
   let weather;
 
   if (availability.exists) {
-    if (displayLocation) {
+    if (location && location !== apiLocation) {
       await updateWeatherLocation(availability.id, location);
     }
 
@@ -127,7 +120,7 @@ async function getOrCreateDailyWeather(req, res) {
 
     if (needsUpdate) {
       weather = await buildMergedDailyForecastPayload(apiLocation, dateRange);
-      await updateWeatherDataforLocation(availability.id, weather);
+      await updateWeatherDataforLocation(availability.id, weather, dateRange);
     } else {
       weather = {
         forecast: await getStoredDailyWeatherData(availability.id, dateRange),
@@ -143,8 +136,116 @@ async function getOrCreateDailyWeather(req, res) {
       weatherData: weather,
     });
   }
+  return weather;
+}
+
+function sanitizeFileName(value) {
+  return String(value || "location")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+async function getOrCreateDailyWeather(req, res) {
+  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+  const apiLocation = `${lat},${lon}`;
+  const displayLocation =
+    typeof req.body?.displayLocation === "string"
+      ? req.body.displayLocation.trim()
+      : "";
+  const location = displayLocation || apiLocation;
+  const dateRange = normalizeDateRange(req.body.dateRange);
+
+  const weather = await resolveDailyWeatherForLocation({
+    lat,
+    lon,
+    dateRange,
+    location,
+  });
 
   res.status(201).json(weather);
+}
+
+async function exportDailyWeather(req, res) {
+  const { lat, lon } = validateLatLonQuery(req.query.lat, req.query.lon);
+  const apiLocation = `${lat},${lon}`;
+  const displayLocation =
+    typeof req.body?.displayLocation === "string"
+      ? req.body.displayLocation.trim()
+      : "";
+  const location = displayLocation || apiLocation;
+  const dateRange = normalizeDateRange(req.body.dateRange);
+  const format = String(req.query.format || "json").toLowerCase();
+
+  if (format !== "json" && format !== "csv") {
+    throw new AppError(
+      "Unsupported export format. Use `json` or `csv`.",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const weather = await resolveDailyWeatherForLocation({
+    lat,
+    lon,
+    dateRange,
+    location,
+  });
+
+  const days = weather?.forecast?.forecastday || [];
+  const exportPayload = {
+    location,
+    coordinates: { lat, lon },
+    dateRange: {
+      start: dateRange.startDate,
+      end: dateRange.endDate,
+    },
+    forecastday: days.map((day) => ({
+      day: day?.day ?? null,
+      avgtemp_c: day?.avgtemp_c ?? null,
+      daily_rain_probability_pct: day?.daily_rain_probability_pct ?? null,
+    })),
+  };
+
+  const baseName = `${sanitizeFileName(location)}-${dateRange.startDate}-to-${dateRange.endDate}-daily-forecast`;
+
+  if (format === "json") {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${baseName}.json"`,
+    );
+    return res.status(200).send(`${JSON.stringify(exportPayload, null, 2)}\n`);
+  }
+
+  const csvRows = exportPayload.forecastday.map((day) => ({
+    location: exportPayload.location,
+    latitude: exportPayload.coordinates.lat,
+    longitude: exportPayload.coordinates.lon,
+    start_date: exportPayload.dateRange.start,
+    end_date: exportPayload.dateRange.end,
+    day: day.day,
+    avgtemp_c: day.avgtemp_c,
+    daily_rain_probability_pct: day.daily_rain_probability_pct,
+  }));
+
+  const csv = buildCsv(csvRows, [
+    { header: "location", value: "location" },
+    { header: "latitude", value: "latitude" },
+    { header: "longitude", value: "longitude" },
+    { header: "start_date", value: "start_date" },
+    { header: "end_date", value: "end_date" },
+    { header: "day", value: "day" },
+    { header: "avgtemp_c", value: "avgtemp_c" },
+    { header: "daily_rain_probability_pct", value: "daily_rain_probability_pct" },
+  ]);
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${baseName}.csv"`,
+  );
+  return res.status(200).send(`${csv}\n`);
 }
 
 async function getWeatherHistoryController(req, res) {
@@ -239,6 +340,7 @@ module.exports = {
   getWeatherHistoryController,
   updateWeather,
   deleteWeather,
+  exportDailyWeather,
   exportWeather,
   __testing: {
     API_ENDPOINTS,

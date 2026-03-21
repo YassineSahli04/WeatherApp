@@ -162,17 +162,19 @@ async function getWeatherHistory() {
   return result.rows.map(mapRecord);
 }
 
-async function updateWeatherDataforLocation(id, weatherData) {
+async function updateWeatherDataforLocation(id, weatherData, dateRange) {
   const result = await pool.query(
     `
       UPDATE weather_queries
       SET
+        start_date = $3,
+        end_date = $4,
         weather_data = $2::jsonb,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
-    [id, JSON.stringify(weatherData)],
+    [id, JSON.stringify(weatherData), dateRange.startDate, dateRange.endDate],
   );
 
   return mapRecord(result.rows[0]);
