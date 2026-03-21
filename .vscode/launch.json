@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach Backend (Docker 9229)",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 9229,
+      "localRoot": "${workspaceFolder}/backend",
+      "remoteRoot": "/app",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    }
+  ]
+}
