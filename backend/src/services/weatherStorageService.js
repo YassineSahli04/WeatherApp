@@ -90,7 +90,10 @@ async function doRowNeedsUpdate(id, stDate, endDate) {
 
   const row = res.rows[0];
 
-  const coversRange = row.start_date <= stDate && row.end_date >= endDate;
+  const start = new Date(`${stDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  const coversRange = row.start_date <= start && row.end_date >= end;
 
   if (!coversRange) {
     return true;

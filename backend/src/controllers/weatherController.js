@@ -113,15 +113,11 @@ async function resolveDailyWeatherForLocation({
       await updateWeatherLocation(availability.id, location);
     }
 
-    const needsUpdateResult = await doRowNeedsUpdate(
+    const needsUpdate = await doRowNeedsUpdate(
       availability.id,
       dateRange.startDate,
       dateRange.endDate,
     );
-    const needsUpdate =
-      typeof needsUpdateResult === "object"
-        ? Boolean(needsUpdateResult.needsUpdate)
-        : Boolean(needsUpdateResult);
 
     if (needsUpdate) {
       weather = await buildMergedDailyForecastPayload(apiLocation, dateRange);
