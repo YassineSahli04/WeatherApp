@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import SearchHeader from "@/components/weather/SearchHeader";
@@ -21,6 +21,85 @@ function formatDateForInput(date: Date): string {
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 86400000);
+}
+
+const LOCATION_STORAGE_KEY = "weatherapp:selected-location";
+const DRAFT_RANGE_STORAGE_KEY = "weatherapp:date-range-draft";
+const APPLIED_RANGE_STORAGE_KEY = "weatherapp:date-range-applied";
+
+function buildDefaultDateRange(): DailyDateRangeInput {
+  const today = new Date();
+  return {
+    start: formatDateForInput(today),
+    end: formatDateForInput(addDays(today, 6)),
+  };
+}
+
+function isIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function readStoredLocation(): {
+  coordinates: { lat: number; lon: number };
+  displayLocation: string;
+} {
+  if (typeof window === "undefined") {
+    return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LOCATION_STORAGE_KEY);
+    if (!raw) {
+      return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+    }
+
+    const parsed = JSON.parse(raw) as {
+      lat?: number;
+      lon?: number;
+      displayLocation?: string;
+    };
+
+    if (
+      typeof parsed.lat === "number" &&
+      typeof parsed.lon === "number" &&
+      Number.isFinite(parsed.lat) &&
+      Number.isFinite(parsed.lon) &&
+      parsed.lat >= -90 &&
+      parsed.lat <= 90 &&
+      parsed.lon >= -180 &&
+      parsed.lon <= 180 &&
+      typeof parsed.displayLocation === "string" &&
+      parsed.displayLocation.trim()
+    ) {
+      return {
+        coordinates: { lat: parsed.lat, lon: parsed.lon },
+        displayLocation: parsed.displayLocation.trim(),
+      };
+    }
+  } catch {}
+
+  return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+}
+
+function readStoredDateRange(key: string): DailyDateRangeInput | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { start?: string; end?: string };
+    if (typeof parsed.start === "string" && typeof parsed.end === "string") {
+      if (isIsoDate(parsed.start) && isIsoDate(parsed.end)) {
+        return { start: parsed.start, end: parsed.end };
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 const LoadingPlaceholder = () => (
@@ -80,17 +159,20 @@ const LoadingPlaceholder = () => (
 );
 
 const Index = () => {
-  const [queryCoordinates, setQueryCoordinates] = useState(MOCK_COORDINATES);
-  const [displayLocation, setDisplayLocation] = useState(MOCK_LOCATION_LABEL);
-  const [dateRangeDraft, setDateRangeDraft] = useState<DailyDateRangeInput>(() => {
-    const today = new Date();
-    return {
-      start: formatDateForInput(today),
-      end: formatDateForInput(addDays(today, 6)),
-    };
-  });
+  const [queryCoordinates, setQueryCoordinates] = useState(
+    () => readStoredLocation().coordinates,
+  );
+  const [displayLocation, setDisplayLocation] = useState(
+    () => readStoredLocation().displayLocation,
+  );
+  const [dateRangeDraft, setDateRangeDraft] = useState<DailyDateRangeInput>(
+    () => readStoredDateRange(DRAFT_RANGE_STORAGE_KEY) || buildDefaultDateRange(),
+  );
   const [appliedDateRange, setAppliedDateRange] = useState<DailyDateRangeInput>(
-    dateRangeDraft,
+    () =>
+      readStoredDateRange(APPLIED_RANGE_STORAGE_KEY) ||
+      readStoredDateRange(DRAFT_RANGE_STORAGE_KEY) ||
+      buildDefaultDateRange(),
   );
   const [downloadFormat, setDownloadFormat] = useState<DailyExportFormat | null>(
     null,
@@ -117,11 +199,46 @@ const Index = () => {
       Number.isFinite(queryCoordinates.lon),
     retry: 1,
     staleTime: 60 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 
   const weatherData = data;
   const requestError = error instanceof Error ? error.message : null;
-  const isAwaitingResponse = isLoading || isFetching;
+  const isInitialLoading = !weatherData && (isLoading || isFetching);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      LOCATION_STORAGE_KEY,
+      JSON.stringify({
+        lat: queryCoordinates.lat,
+        lon: queryCoordinates.lon,
+        displayLocation,
+      }),
+    );
+  }, [queryCoordinates.lat, queryCoordinates.lon, displayLocation]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      DRAFT_RANGE_STORAGE_KEY,
+      JSON.stringify(dateRangeDraft),
+    );
+  }, [dateRangeDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      APPLIED_RANGE_STORAGE_KEY,
+      JSON.stringify(appliedDateRange),
+    );
+  }, [appliedDateRange]);
 
   const handleDownload = async (format: DailyExportFormat) => {
     if (!weatherData || downloadFormat) {
@@ -165,9 +282,9 @@ const Index = () => {
         </Link>
       </div>
 
-      {isAwaitingResponse && <LoadingPlaceholder />}
+      {isInitialLoading && <LoadingPlaceholder />}
 
-      {!isAwaitingResponse && requestError && (
+      {!weatherData && requestError && (
         <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-8 max-w-4xl">
           <div className="weather-card border border-destructive/30 bg-destructive/5">
             <p className="text-sm font-medium text-destructive mb-1">
@@ -178,7 +295,7 @@ const Index = () => {
         </main>
       )}
 
-      {!isAwaitingResponse && weatherData && (
+      {weatherData && (
         <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-8 space-y-4 md:space-y-5 max-w-4xl">
           {/* Hero */}
           <WeatherHero
