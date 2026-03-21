@@ -65,6 +65,20 @@ interface BackendWeatherHistoryRecord {
   updatedAt?: string;
 }
 
+interface BackendPlaceSearchResponse {
+  results?: Array<{
+    name?: string | null;
+    location?: {
+      address?: string | null;
+      locality?: string | null;
+      region?: string | null;
+      country?: string | null;
+      formatted_address?: string | null;
+    } | null;
+    website?: string | null;
+  }>;
+}
+
 export interface DailyDateRangeInput {
   start: string;
   end: string;
@@ -81,6 +95,18 @@ export interface LocationDashboardItem {
   endDate: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export interface PlaceSearchItem {
+  name: string | null;
+  location: {
+    address: string | null;
+    locality: string | null;
+    region: string | null;
+    country: string | null;
+    formattedAddress: string | null;
+  };
+  website: string | null;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
@@ -385,4 +411,31 @@ export async function deleteWeatherRecordById(id: number): Promise<void> {
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
   }
+}
+
+export async function fetchRelevantPlacesForLocation(
+  lat: number,
+  lon: number,
+): Promise<PlaceSearchItem[]> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBaseUrl}/places?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as BackendPlaceSearchResponse;
+  return (payload.results || []).map((item) => ({
+    name: item.name || null,
+    location: {
+      address: item.location?.address || null,
+      locality: item.location?.locality || null,
+      region: item.location?.region || null,
+      country: item.location?.country || null,
+      formattedAddress: item.location?.formatted_address || null,
+    },
+    website: item.website || null,
+  }));
 }

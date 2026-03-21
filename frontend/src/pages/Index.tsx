@@ -7,9 +7,11 @@ import KeyMetrics from "@/components/weather/KeyMetrics";
 import HourlyForecast from "@/components/weather/HourlyForecast";
 import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
+import RelevantPlaces from "@/components/weather/RelevantPlaces";
 import { MOCK_COORDINATES, MOCK_LOCATION_LABEL } from "@/data/weatherData";
 import {
   downloadDailyForecastExport,
+  fetchRelevantPlacesForLocation,
   fetchWeatherForLocation,
   type DailyExportFormat,
   type DailyDateRangeInput,
@@ -44,13 +46,19 @@ function readStoredLocation(): {
   displayLocation: string;
 } {
   if (typeof window === "undefined") {
-    return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+    return {
+      coordinates: MOCK_COORDINATES,
+      displayLocation: MOCK_LOCATION_LABEL,
+    };
   }
 
   try {
     const raw = window.localStorage.getItem(LOCATION_STORAGE_KEY);
     if (!raw) {
-      return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+      return {
+        coordinates: MOCK_COORDINATES,
+        displayLocation: MOCK_LOCATION_LABEL,
+      };
     }
 
     const parsed = JSON.parse(raw) as {
@@ -78,7 +86,10 @@ function readStoredLocation(): {
     }
   } catch {}
 
-  return { coordinates: MOCK_COORDINATES, displayLocation: MOCK_LOCATION_LABEL };
+  return {
+    coordinates: MOCK_COORDINATES,
+    displayLocation: MOCK_LOCATION_LABEL,
+  };
 }
 
 function readStoredDateRange(key: string): DailyDateRangeInput | null {
@@ -166,7 +177,8 @@ const Index = () => {
     () => readStoredLocation().displayLocation,
   );
   const [dateRangeDraft, setDateRangeDraft] = useState<DailyDateRangeInput>(
-    () => readStoredDateRange(DRAFT_RANGE_STORAGE_KEY) || buildDefaultDateRange(),
+    () =>
+      readStoredDateRange(DRAFT_RANGE_STORAGE_KEY) || buildDefaultDateRange(),
   );
   const [appliedDateRange, setAppliedDateRange] = useState<DailyDateRangeInput>(
     () =>
@@ -174,9 +186,8 @@ const Index = () => {
       readStoredDateRange(DRAFT_RANGE_STORAGE_KEY) ||
       buildDefaultDateRange(),
   );
-  const [downloadFormat, setDownloadFormat] = useState<DailyExportFormat | null>(
-    null,
-  );
+  const [downloadFormat, setDownloadFormat] =
+    useState<DailyExportFormat | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: [
@@ -202,9 +213,31 @@ const Index = () => {
     placeholderData: (previousData) => previousData,
   });
 
+  const {
+    data: placesData,
+    isFetching: isFetchingPlaces,
+    error: placesError,
+  } = useQuery({
+    queryKey: ["places", queryCoordinates.lat, queryCoordinates.lon],
+    queryFn: () =>
+      fetchRelevantPlacesForLocation(
+        queryCoordinates.lat,
+        queryCoordinates.lon,
+      ),
+    enabled:
+      Number.isFinite(queryCoordinates.lat) &&
+      Number.isFinite(queryCoordinates.lon),
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+  });
+
   const weatherData = data;
   const requestError = error instanceof Error ? error.message : null;
   const isInitialLoading = !weatherData && (isLoading || isFetching);
+  const places = placesData || [];
+  const placesErrorMessage =
+    placesError instanceof Error ? placesError.message : null;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -257,7 +290,9 @@ const Index = () => {
       });
     } catch (error) {
       setDownloadError(
-        error instanceof Error ? error.message : "Unable to export forecast file.",
+        error instanceof Error
+          ? error.message
+          : "Unable to export forecast file.",
       );
     } finally {
       setDownloadFormat(null);
@@ -268,7 +303,11 @@ const Index = () => {
     <div className="min-h-dvh bg-background overflow-x-hidden">
       <SearchHeader
         displayLocation={displayLocation}
-        onLocationChange={({ lat, lon, displayLocation: nextDisplayLocation }) => {
+        onLocationChange={({
+          lat,
+          lon,
+          displayLocation: nextDisplayLocation,
+        }) => {
           setQueryCoordinates({ lat, lon });
           setDisplayLocation(nextDisplayLocation);
         }}
@@ -346,7 +385,11 @@ const Index = () => {
               <button
                 type="button"
                 onClick={() => void handleDownload("csv")}
-                disabled={isFetching || Boolean(downloadFormat) || weatherData.daily.length === 0}
+                disabled={
+                  isFetching ||
+                  Boolean(downloadFormat) ||
+                  weatherData.daily.length === 0
+                }
                 className="h-9 rounded-xl bg-secondary px-3 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
               >
                 {downloadFormat === "csv"
@@ -356,7 +399,11 @@ const Index = () => {
               <button
                 type="button"
                 onClick={() => void handleDownload("json")}
-                disabled={isFetching || Boolean(downloadFormat) || weatherData.daily.length === 0}
+                disabled={
+                  isFetching ||
+                  Boolean(downloadFormat) ||
+                  weatherData.daily.length === 0
+                }
                 className="h-9 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
               >
                 {downloadFormat === "json"
@@ -369,7 +416,12 @@ const Index = () => {
             )}
           </section>
 
-
+          {/* Relevant Places */}
+          <RelevantPlaces
+            places={places}
+            isLoading={isFetchingPlaces}
+            error={placesErrorMessage}
+          />
 
           {/* Map */}
           <section>
