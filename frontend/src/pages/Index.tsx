@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import SearchHeader from "@/components/weather/SearchHeader";
 import WeatherHero from "@/components/weather/WeatherHero";
@@ -7,10 +7,21 @@ import HourlyForecast from "@/components/weather/HourlyForecast";
 import WeatherAlert from "@/components/weather/WeatherAlert";
 import MapSection from "@/components/weather/MapSection";
 import { MOCK_COORDINATES, MOCK_LOCATION_LABEL } from "@/data/weatherData";
-import { fetchWeatherForLocation } from "@/services/weatherApi";
+import {
+  fetchWeatherForLocation,
+  type DailyDateRangeInput,
+} from "@/services/weatherApi";
+
+function formatDateForInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86400000);
+}
 
 const LoadingPlaceholder = () => (
-  <main className="container mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-5 max-w-4xl">
+  <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-8 space-y-4 md:space-y-5 max-w-4xl">
     <div className="weather-card weather-hero-gradient rounded-2xl p-6 md:p-8 animate-pulse">
       <div className="h-20 w-40 bg-white/20 rounded-xl mb-3" />
       <div className="h-5 w-48 bg-white/20 rounded-lg mb-2" />
@@ -68,10 +79,30 @@ const LoadingPlaceholder = () => (
 const Index = () => {
   const [queryCoordinates, setQueryCoordinates] = useState(MOCK_COORDINATES);
   const [displayLocation, setDisplayLocation] = useState(MOCK_LOCATION_LABEL);
+  const [dateRangeDraft, setDateRangeDraft] = useState<DailyDateRangeInput>(() => {
+    const today = new Date();
+    return {
+      start: formatDateForInput(today),
+      end: formatDateForInput(addDays(today, 6)),
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DailyDateRangeInput>(
+    dateRangeDraft,
+  );
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ["weather", queryCoordinates.lat, queryCoordinates.lon],
+    queryKey: [
+      "weather",
+      queryCoordinates.lat,
+      queryCoordinates.lon,
+      appliedDateRange.start,
+      appliedDateRange.end,
+    ],
     queryFn: () =>
-      fetchWeatherForLocation(queryCoordinates.lat, queryCoordinates.lon),
+      fetchWeatherForLocation(
+        queryCoordinates.lat,
+        queryCoordinates.lon,
+        appliedDateRange,
+      ),
     enabled:
       Number.isFinite(queryCoordinates.lat) &&
       Number.isFinite(queryCoordinates.lon),
@@ -83,14 +114,8 @@ const Index = () => {
   const requestError = error instanceof Error ? error.message : null;
   const isAwaitingResponse = isLoading || isFetching;
 
-  useEffect(() => {
-    if (weatherData?.location) {
-      setDisplayLocation(weatherData.location);
-    }
-  }, [weatherData?.location]);
-
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background overflow-x-hidden">
       <SearchHeader
         displayLocation={displayLocation}
         onLocationChange={({ lat, lon, displayLocation: nextDisplayLocation }) => {
@@ -102,7 +127,7 @@ const Index = () => {
       {isAwaitingResponse && <LoadingPlaceholder />}
 
       {!isAwaitingResponse && requestError && (
-        <main className="container mx-auto px-4 py-4 md:py-6 max-w-4xl">
+        <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-8 max-w-4xl">
           <div className="weather-card border border-destructive/30 bg-destructive/5">
             <p className="text-sm font-medium text-destructive mb-1">
               Unable to load weather data
@@ -113,7 +138,7 @@ const Index = () => {
       )}
 
       {!isAwaitingResponse && weatherData && (
-        <main className="container mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-5 max-w-4xl">
+        <main className="container mx-auto px-4 py-4 md:py-6 pb-20 md:pb-8 space-y-4 md:space-y-5 max-w-4xl">
           {/* Hero */}
           <WeatherHero
             temp={weatherData.current.temp}
@@ -150,7 +175,15 @@ const Index = () => {
 
           {/* Hourly Forecast */}
           <section>
-            <HourlyForecast hours={weatherData.hourly} />
+            <HourlyForecast
+              days={weatherData.daily}
+              dateRange={dateRangeDraft}
+              onDateRangeChange={setDateRangeDraft}
+              onApplyDateRange={() => {
+                setAppliedDateRange(dateRangeDraft);
+              }}
+              isLoading={isFetching}
+            />
           </section>
 
 

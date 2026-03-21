@@ -1,18 +1,10 @@
 import type {
   WeatherDashboardData,
   WeatherAlertItem,
-  WeatherHourlyItem,
+  WeatherDailyItem,
 } from "@/data/weatherData";
 
-interface BackendWeatherResponse {
-  location?: {
-    name?: string;
-    region?: string;
-    country?: string;
-    latitude?: number;
-    longitude?: number;
-    localTime?: string;
-  };
+interface BackendCurrentWeatherResponse {
   current?: {
     temperatureC?: number;
     feelsLikeC?: number;
@@ -31,13 +23,6 @@ interface BackendWeatherResponse {
     sunrise?: string;
     sunset?: string;
   };
-  hourlyForecast?: Array<{
-    time?: string;
-    temperatureC?: number;
-    condition?: { text?: string; icon?: string };
-    chanceOfRainPct?: number;
-    chanceOfSnowPct?: number;
-  }>;
   weatherAlerts?: Array<{
     headline?: string;
     severity?: string;
@@ -51,10 +36,25 @@ interface BackendWeatherResponse {
   }>;
 }
 
+interface BackendDailyWeatherResponse {
+  forecast?: {
+    forecastday?: Array<{
+      day?: string;
+      avgtemp_c?: number;
+      daily_rain_probability_pct?: number;
+    }>;
+  };
+}
+
 interface BackendErrorResponse {
   error?: {
     message?: string;
   };
+}
+
+export interface DailyDateRangeInput {
+  start: string;
+  end: string;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
@@ -105,59 +105,9 @@ function mapAqiLabel(usEpaIndex: number): string {
   }
 }
 
-function formatHourLabel(dateText: string, isFirst: boolean): string {
-  if (isFirst) {
-    return "Now";
-  }
-
-  const parsed = new Date(dateText.replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) {
-    return dateText;
-  }
-
-  return parsed.toLocaleTimeString([], {
-    hour: "numeric",
-    hour12: true,
-  });
-}
-
-function buildLocationTitle(
-  payload: BackendWeatherResponse,
-  fallbackLocation: string,
-): string {
-  const parts = [
-    payload.location?.name,
-    payload.location?.region,
-    payload.location?.country,
-  ]
-    .map((part) => (part || "").trim())
-    .filter(Boolean);
-
-  return parts.length ? parts.join(", ") : fallbackLocation;
-}
-
-function mapHourlyForecast(
-  payload: BackendWeatherResponse,
-): WeatherHourlyItem[] {
-  const hourly = payload.hourlyForecast || [];
-  return hourly.slice(0, 12).map((item, index) => {
-    const chanceOfRain = Number(item.chanceOfRainPct || 0);
-    const chanceOfSnow = Number(item.chanceOfSnowPct || 0);
-    const precip = Math.max(chanceOfRain, chanceOfSnow);
-
-    return {
-      time: formatHourLabel(item.time || "", index === 0),
-      temp: Math.round(Number(item.temperatureC || 0)),
-      icon: mapConditionToIcon(
-        item.condition?.text || "",
-        item.condition?.icon,
-      ),
-      precip: Math.round(precip),
-    };
-  });
-}
-
-function mapAlerts(payload: BackendWeatherResponse): WeatherAlertItem {
+function mapAlerts(
+  payload: BackendCurrentWeatherResponse,
+): WeatherAlertItem {
   const alerts = payload.weatherAlerts || [];
   const primaryAlert = alerts[0] || {};
   const headline = (primaryAlert.headline || "").trim();
@@ -181,58 +131,73 @@ function mapAlerts(payload: BackendWeatherResponse): WeatherAlertItem {
   };
 }
 
-function toDashboardData(
-  payload: BackendWeatherResponse,
-  fallbackLocation: string,
-): WeatherDashboardData {
-  const usEpaIndex = Number(payload.current?.airQuality?.usEpaIndex || 0);
-  const aqiValue =
-    usEpaIndex > 0
-      ? usEpaIndex
-      : Math.round(Number(payload.current?.airQuality?.pm2_5 || 0));
+function mapDailyForecast(
+  payload: BackendDailyWeatherResponse,
+): WeatherDailyItem[] {
+  const days = payload.forecast?.forecastday || [];
+  return days.map((item) => ({
+    day: item.day || "",
+    temp: Math.round(Number(item.avgtemp_c || 0)),
+    precip: Math.round(Number(item.daily_rain_probability_pct || 0)),
+  }));
+}
 
-  return {
-    location: buildLocationTitle(payload, fallbackLocation),
-    coordinates: {
-      lat: Number(payload.location?.latitude || 0),
-      lng: Number(payload.location?.longitude || 0),
+async function parseErrorMessage(response: Response): Promise<string> {
+  const errorPayload = (await response
+    .json()
+    .catch(() => null)) as BackendErrorResponse | null;
+  return errorPayload?.error?.message || "Failed to fetch weather data.";
+}
+
+async function fetchCurrentWeatherForLocation(
+  lat: number,
+  lon: number,
+): Promise<BackendCurrentWeatherResponse> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBaseUrl}/weather?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  return (await response.json()) as BackendCurrentWeatherResponse;
+}
+
+async function fetchDailyWeatherForLocation(
+  lat: number,
+  lon: number,
+  dateRange: DailyDateRangeInput,
+): Promise<BackendDailyWeatherResponse> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBaseUrl}/weather?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dateRange: {
+          start: dateRange.start,
+          end: dateRange.end,
+        },
+      }),
     },
-    current: {
-      temp: Math.round(Number(payload.current?.temperatureC || 0)),
-      feelsLike: Math.round(Number(payload.current?.feelsLikeC || 0)),
-      condition: payload.current?.condition?.text || "Unknown",
-      description:
-        payload.current?.feelsLikeExplanation ||
-        "No additional weather details available.",
-      icon: mapConditionToIcon(
-        payload.current?.condition?.text || "",
-        payload.current?.condition?.icon,
-      ),
-      high: Math.round(
-        Number(payload.today?.maxTempC || payload.current?.temperatureC || 0),
-      ),
-      low: Math.round(
-        Number(payload.today?.minTempC || payload.current?.temperatureC || 0),
-      ),
-      humidity: Math.round(Number(payload.current?.humidity || 0)),
-      windSpeed: Math.round(Number(payload.current?.windSpeedKph || 0)),
-      windDirection: payload.current?.windDirection || "-",
-      uvIndex: Math.round(Number(payload.current?.uvIndex || 0)),
-      visibility: Math.round(Number(payload.current?.visibilityKm || 0)),
-      aqi: aqiValue,
-      aqiLabel: mapAqiLabel(usEpaIndex),
-      pressure: 0,
-    },
-    hourly: mapHourlyForecast(payload),
-    sunrise: payload.today?.sunrise || "-",
-    sunset: payload.today?.sunset || "-",
-    alert: mapAlerts(payload),
-  };
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  return (await response.json()) as BackendDailyWeatherResponse;
 }
 
 export async function fetchWeatherForLocation(
   lat: number,
   lon: number,
+  dateRange: DailyDateRangeInput,
 ): Promise<WeatherDashboardData> {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     throw new Error("Latitude/longitude must be valid decimal numbers.");
@@ -244,19 +209,57 @@ export async function fetchWeatherForLocation(
     );
   }
 
-  const apiBaseUrl = getApiBaseUrl();
-  const response = await fetch(
-    `${apiBaseUrl}/weather?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
-  );
-  if (!response.ok) {
-    const errorPayload = (await response
-      .json()
-      .catch(() => null)) as BackendErrorResponse | null;
-    const message =
-      errorPayload?.error?.message || "Failed to fetch weather data.";
-    throw new Error(message);
-  }
+  const [currentPayload, dailyPayload] = await Promise.all([
+    fetchCurrentWeatherForLocation(lat, lon),
+    fetchDailyWeatherForLocation(lat, lon, dateRange),
+  ]);
 
-  const payload = (await response.json()) as BackendWeatherResponse;
-  return toDashboardData(payload, `${lat},${lon}`);
+  const usEpaIndex = Number(currentPayload.current?.airQuality?.usEpaIndex || 0);
+  const aqiValue =
+    usEpaIndex > 0
+      ? usEpaIndex
+      : Math.round(Number(currentPayload.current?.airQuality?.pm2_5 || 0));
+
+  return {
+    location: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+    coordinates: { lat, lng: lon },
+    current: {
+      temp: Math.round(Number(currentPayload.current?.temperatureC || 0)),
+      feelsLike: Math.round(Number(currentPayload.current?.feelsLikeC || 0)),
+      condition: currentPayload.current?.condition?.text || "Unknown",
+      description:
+        currentPayload.current?.feelsLikeExplanation ||
+        "No additional weather details available.",
+      icon: mapConditionToIcon(
+        currentPayload.current?.condition?.text || "",
+        currentPayload.current?.condition?.icon,
+      ),
+      high: Math.round(
+        Number(
+          currentPayload.today?.maxTempC ||
+            currentPayload.current?.temperatureC ||
+            0,
+        ),
+      ),
+      low: Math.round(
+        Number(
+          currentPayload.today?.minTempC ||
+            currentPayload.current?.temperatureC ||
+            0,
+        ),
+      ),
+      humidity: Math.round(Number(currentPayload.current?.humidity || 0)),
+      windSpeed: Math.round(Number(currentPayload.current?.windSpeedKph || 0)),
+      windDirection: currentPayload.current?.windDirection || "-",
+      uvIndex: Math.round(Number(currentPayload.current?.uvIndex || 0)),
+      visibility: Math.round(Number(currentPayload.current?.visibilityKm || 0)),
+      aqi: aqiValue,
+      aqiLabel: mapAqiLabel(usEpaIndex),
+      pressure: 0,
+    },
+    daily: mapDailyForecast(dailyPayload),
+    sunrise: currentPayload.today?.sunrise || "-",
+    sunset: currentPayload.today?.sunset || "-",
+    alert: mapAlerts(currentPayload),
+  };
 }

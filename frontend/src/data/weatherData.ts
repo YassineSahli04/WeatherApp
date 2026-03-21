@@ -9,10 +9,9 @@ export interface WeatherAlertItem {
   instruction?: string;
 }
 
-export interface WeatherHourlyItem {
-  time: string;
+export interface WeatherDailyItem {
+  day: string;
   temp: number;
-  icon: string;
   precip: number;
 }
 
@@ -36,7 +35,7 @@ export interface WeatherDashboardData {
     aqiLabel: string;
     pressure: number;
   };
-  hourly: WeatherHourlyItem[];
+  daily: WeatherDailyItem[];
   sunrise: string;
   sunset: string;
   alert: WeatherAlertItem;
